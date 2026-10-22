@@ -31,6 +31,7 @@ fun SettingsScreen(modifier: Modifier = Modifier, onOpenPermissions: () -> Unit)
     ) {
         UpdateCard()
         BubbleSettingsCard()
+        AudioSettingsCard()
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Autorisations", style = MaterialTheme.typography.titleMedium)

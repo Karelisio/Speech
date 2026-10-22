@@ -44,7 +44,7 @@ object BenchReport {
         appendLine("## Transcriptions")
         usedClips.forEachIndexed { i, clip ->
             appendLine()
-            appendLine("### Clip ${i + 1} (${"%.1f".format(clip.durationMs / 1000.0)} s)")
+            appendLine("### Clip ${i + 1} (${"%.1f".format(clip.durationMs / 1000.0)} s${clip.source?.let { ", $it" } ?: ""})")
             appendLine("Réf. : ${clip.reference ?: "(aucune)"}")
             for (r in results) {
                 val c = r.clips.firstOrNull { it.clipId == clip.id } ?: continue

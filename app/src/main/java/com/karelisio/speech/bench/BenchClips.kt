@@ -15,6 +15,8 @@ data class BenchClip(
     val reference: String?,
     val durationMs: Long,
     val createdAt: Long,
+    /** Réglage micro utilisé pour l'enregistrement (null : importé ou ancien clip). */
+    val source: String? = null,
 )
 
 /** Clips audio enregistrés pour le benchmark (`filesDir/bench/clips`). */
@@ -28,12 +30,13 @@ class BenchClips(private val context: Context) {
     fun samples(clip: BenchClip): FloatArray = Wav.read(file(clip))
 
     @Synchronized
-    fun add(samples: FloatArray, reference: String?): BenchClip {
+    fun add(samples: FloatArray, reference: String?, source: String? = null): BenchClip {
         val clip = BenchClip(
             id = "clip_${System.currentTimeMillis()}",
             reference = reference?.trim()?.takeIf { it.isNotEmpty() },
             durationMs = samples.size * 1000L / AudioRecorder.SAMPLE_RATE,
             createdAt = System.currentTimeMillis(),
+            source = source,
         )
         Wav.write(file(clip), samples)
         save(_clips.value + clip)
@@ -42,7 +45,7 @@ class BenchClips(private val context: Context) {
 
     fun import(uri: Uri, reference: String?): BenchClip {
         val samples = context.contentResolver.openInputStream(uri)!!.use { Wav.read(it) }
-        return add(samples, reference)
+        return add(samples, reference, "importé")
     }
 
     @Synchronized
@@ -60,7 +63,8 @@ class BenchClips(private val context: Context) {
         val arr = JSONArray()
         list.forEach {
             arr.put(JSONObject().put("id", it.id).put("reference", it.reference ?: JSONObject.NULL)
-                .put("durationMs", it.durationMs).put("createdAt", it.createdAt))
+                .put("durationMs", it.durationMs).put("createdAt", it.createdAt)
+                .put("source", it.source ?: JSONObject.NULL))
         }
         index.writeText(arr.toString(2))
         _clips.value = list
@@ -75,6 +79,7 @@ class BenchClips(private val context: Context) {
                 reference = if (o.isNull("reference")) null else o.getString("reference"),
                 durationMs = o.getLong("durationMs"),
                 createdAt = o.getLong("createdAt"),
+                source = if (o.isNull("source")) null else o.optString("source"),
             )
         }.filter { File(dir, "${it.id}.wav").exists() }
     }.getOrDefault(emptyList())

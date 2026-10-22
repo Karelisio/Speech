@@ -104,10 +104,12 @@ fun BenchmarkScreen(modifier: Modifier = Modifier, vm: BenchmarkViewModel = view
                     HorizontalDivider()
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
-                            Text("#${i + 1} · ${"%.1f".format(c.durationMs / 1000.0)} s", style = MaterialTheme.typography.labelMedium)
+                            Text("#${i + 1} · ${"%.1f".format(c.durationMs / 1000.0)} s" + (c.source?.let { " · $it" } ?: ""),
+                                style = MaterialTheme.typography.labelMedium)
                             Text(c.reference ?: "(sans référence)", style = MaterialTheme.typography.bodySmall, maxLines = 2)
                         }
                         TextButton(onClick = { vm.play(c) }) { Text("▶") }
+                        TextButton(onClick = { vm.share(context, c) }) { Text("⇪") }
                         TextButton(onClick = { editing = c }) { Text("Réf.") }
                         TextButton(onClick = { vm.delete(c) }, enabled = !ui.running) { Text("✕") }
                     }

@@ -10,7 +10,49 @@ import androidx.annotation.RequiresPermission
 import com.karelisio.speech.util.AppLog
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlin.math.abs
+import kotlin.math.log10
 import kotlin.math.sqrt
+
+/** Sources micro testables : le traitement appliqué par le constructeur varie selon la source. */
+enum class MicSource(val id: Int, val label: String) {
+    VOICE_RECOGNITION(MediaRecorder.AudioSource.VOICE_RECOGNITION, "Reconnaissance vocale"),
+    UNPROCESSED(MediaRecorder.AudioSource.UNPROCESSED, "Brut (non traité)"),
+    VOICE_PERFORMANCE(MediaRecorder.AudioSource.VOICE_PERFORMANCE, "Performance vocale"),
+    MIC(MediaRecorder.AudioSource.MIC, "Micro standard"),
+    CAMCORDER(MediaRecorder.AudioSource.CAMCORDER, "Caméscope"),
+}
+
+data class CaptureConfig(val source: MicSource, val captureRate: Int) {
+    val label get() = "${source.label} · ${captureRate / 1000} kHz" + if (captureRate != AudioRecorder.SAMPLE_RATE) " → 16 kHz (Speech)" else ""
+}
+
+/** Diagnostic d'un enregistrement, pour repérer traitements, pertes et saturation. */
+data class CaptureReport(
+    val config: CaptureConfig,
+    val deviceRate: Int,
+    val deviceName: String,
+    val effects: List<String>,
+    val silenced: Boolean,
+    val durationMs: Long,
+    val audioMs: Long,
+    val peakDb: Double,
+    val rmsDb: Double,
+    val clippedPct: Double,
+) {
+    /** Écart entre le temps écoulé et l'audio reçu (> 0 = échantillons perdus). */
+    val missingMs get() = (durationMs - audioMs).coerceAtLeast(0)
+
+    fun summary() = buildString {
+        append(config.label)
+        append(" · micro ${deviceRate} Hz")
+        if (deviceName.isNotEmpty()) append(" ($deviceName)")
+        append(" · effets : ").append(if (effects.isEmpty()) "aucun" else effects.joinToString())
+        append("\naudio ${audioMs} ms / ${durationMs} ms écoulés")
+        append(" · crête %.1f dBFS · RMS %.1f dBFS · saturé %.2f %%".format(peakDb, rmsDb, clippedPct))
+        if (silenced) append(" · ⚠ micro coupé par le système")
+    }
+}
 
 /**
  * Capture PCM float mono 16 kHz (entrée native de Whisper / Parakeet).
@@ -18,14 +60,15 @@ import kotlin.math.sqrt
  * L'[AudioRecord] est créé à l'avance par [prepare] : au tap, seul `startRecording()`
  * reste à faire, ce qui ouvre le micro sans délai perceptible.
  */
-class AudioRecorder {
+class AudioRecorder(private val configProvider: () -> CaptureConfig = { CaptureConfig(MicSource.VOICE_RECOGNITION, SAMPLE_RATE) }) {
     companion object {
         const val SAMPLE_RATE = 16_000
         private const val TAG = "Audio"
-        private const val CHUNK = 512 // 32 ms : cadence de mise à jour du niveau sonore
+        private const val CHUNK_MS = 32 // cadence de mise à jour du niveau sonore
     }
 
     private var record: AudioRecord? = null
+    private var recordConfig: CaptureConfig? = null
     private var thread: Thread? = null
     @Volatile private var running = false
     private val buffer = FloatBuffer()
@@ -38,25 +81,37 @@ class AudioRecorder {
     var lastStartLatencyMs: Long = 0
         private set
 
+    private val _lastReport = MutableStateFlow<CaptureReport?>(null)
+    val lastReport: StateFlow<CaptureReport?> = _lastReport
+
+    private var tStart = 0L
+    @Volatile private var deviceRate = 0
+    @Volatile private var deviceName = ""
+    @Volatile private var effects: List<String> = emptyList()
+    @Volatile private var silenced = false
+
     val isRecording get() = running
 
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     fun prepare() {
-        if (record != null) return
-        val minBuf = AudioRecord.getMinBufferSize(SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_FLOAT)
+        val cfg = configProvider()
+        if (record != null && recordConfig == cfg) return
+        record?.release()
+        val minBuf = AudioRecord.getMinBufferSize(cfg.captureRate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_FLOAT)
         val r = AudioRecord.Builder()
-            .setAudioSource(MediaRecorder.AudioSource.VOICE_RECOGNITION)
+            .setAudioSource(cfg.source.id)
             .setAudioFormat(
                 AudioFormat.Builder()
-                    .setSampleRate(SAMPLE_RATE)
+                    .setSampleRate(cfg.captureRate)
                     .setChannelMask(AudioFormat.CHANNEL_IN_MONO)
                     .setEncoding(AudioFormat.ENCODING_PCM_FLOAT)
                     .build()
             )
-            .setBufferSizeInBytes(maxOf(minBuf, SAMPLE_RATE * 4)) // ≥ 250 ms
+            .setBufferSizeInBytes(maxOf(minBuf, cfg.captureRate * 4)) // ≥ 250 ms
             .build()
-        check(r.state == AudioRecord.STATE_INITIALIZED) { "AudioRecord non initialisé" }
+        check(r.state == AudioRecord.STATE_INITIALIZED) { "AudioRecord non initialisé (${cfg.label})" }
         record = r
+        recordConfig = cfg
     }
 
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
@@ -64,28 +119,46 @@ class AudioRecorder {
         if (running) return
         prepare()
         val r = record!!
+        val cfg = recordConfig!!
         buffer.clear()
-        val t0 = SystemClock.elapsedRealtime()
+        deviceRate = 0; deviceName = ""; effects = emptyList(); silenced = false
+        tStart = SystemClock.elapsedRealtime()
         r.startRecording()
         running = true
         thread = Thread({
             Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO)
-            val chunk = FloatArray(CHUNK)
+            val chunk = FloatArray(cfg.captureRate * CHUNK_MS / 1000)
+            val decimator = if (cfg.captureRate == 3 * SAMPLE_RATE) Decimator3() else null
+            val down = FloatArray(chunk.size / 3 + 2)
             var first = true
             while (running) {
-                val n = r.read(chunk, 0, CHUNK, AudioRecord.READ_BLOCKING)
+                val n = r.read(chunk, 0, chunk.size, AudioRecord.READ_BLOCKING)
                 if (n <= 0) continue
                 if (first) {
-                    lastStartLatencyMs = SystemClock.elapsedRealtime() - t0
+                    lastStartLatencyMs = SystemClock.elapsedRealtime() - tStart
                     first = false
+                    inspect(r)
                 }
-                synchronized(buffer) { buffer.append(chunk, n) }
+                val (data, m) = if (decimator != null) down to decimator.process(chunk, n, down) else chunk to n
+                synchronized(buffer) { buffer.append(data, m) }
                 var sum = 0.0
-                for (i in 0 until n) sum += chunk[i] * chunk[i]
-                _level.value = (sqrt(sum / n) * 8).toFloat().coerceIn(0f, 1f)
+                for (i in 0 until m) sum += data[i] * data[i]
+                _level.value = if (m > 0) (sqrt(sum / m) * 8).toFloat().coerceIn(0f, 1f) else 0f
             }
         }, "speech-audio").apply { start() }
-        AppLog.i(TAG, "enregistrement démarré")
+        AppLog.i(TAG, "enregistrement démarré (${cfg.label})")
+    }
+
+    /** Format réel du micro et effets appliqués par le système (Android 10+). */
+    private fun inspect(r: AudioRecord) {
+        runCatching {
+            r.activeRecordingConfiguration?.let { c ->
+                deviceRate = c.format.sampleRate
+                effects = (c.effects + c.clientEffects).map { it.name }.distinct()
+                silenced = c.isClientSilenced
+                deviceName = c.audioDevice?.productName?.toString() ?: ""
+            }
+        }
     }
 
     /** Arrête la capture et renvoie tout l'audio enregistré. */
@@ -97,17 +170,46 @@ class AudioRecorder {
         thread = null
         _level.value = 0f
         val out = synchronized(buffer) { buffer.toArray() }
-        AppLog.i(TAG, "enregistrement arrêté : ${out.size / (SAMPLE_RATE / 1000)} ms, ouverture micro ${lastStartLatencyMs} ms")
+        val report = analyze(out, SystemClock.elapsedRealtime() - tStart)
+        _lastReport.value = report
+        AppLog.i(TAG, "enregistrement arrêté, ouverture micro ${lastStartLatencyMs} ms\n" + report.summary())
         return out
+    }
+
+    private fun analyze(x: FloatArray, elapsedMs: Long): CaptureReport {
+        var peak = 0f
+        var sum = 0.0
+        var clipped = 0
+        for (v in x) {
+            val a = abs(v)
+            if (a > peak) peak = a
+            if (a >= 0.99f) clipped++
+            sum += v * v
+        }
+        fun db(v: Double) = if (v <= 1e-9) -120.0 else 20 * log10(v)
+        return CaptureReport(
+            config = recordConfig ?: configProvider(),
+            deviceRate = deviceRate,
+            deviceName = deviceName,
+            effects = effects,
+            silenced = silenced,
+            durationMs = elapsedMs,
+            audioMs = x.size * 1000L / SAMPLE_RATE,
+            peakDb = db(peak.toDouble()),
+            rmsDb = db(if (x.isEmpty()) 0.0 else sqrt(sum / x.size)),
+            clippedPct = if (x.isEmpty()) 0.0 else 100.0 * clipped / x.size,
+        )
     }
 
     /** Copie de l'audio capturé jusqu'ici (pour la transcription pendant l'enregistrement). */
     fun snapshot(from: Int = 0): FloatArray = synchronized(buffer) { buffer.copyRange(from) }
 
+    /** Libère l'AudioRecord (changement de réglage, arrêt du service). */
     fun release() {
         if (running) stop()
         record?.release()
         record = null
+        recordConfig = null
     }
 }
 

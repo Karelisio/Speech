@@ -3,6 +3,9 @@ package com.karelisio.speech.util
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.core.content.edit
+import com.karelisio.speech.audio.AudioRecorder
+import com.karelisio.speech.audio.CaptureConfig
+import com.karelisio.speech.audio.MicSource
 
 class Prefs(context: Context) {
     private val sp: SharedPreferences = context.getSharedPreferences("speech", Context.MODE_PRIVATE)
@@ -58,6 +61,17 @@ class Prefs(context: Context) {
     var bubbleY: Float
         get() = sp.getFloat("bubble_y", 0.35f)
         set(v) = sp.edit { putFloat("bubble_y", v) }
+
+    var micSource: MicSource
+        get() = runCatching { MicSource.valueOf(sp.getString("mic_source", null)!!) }.getOrDefault(MicSource.VOICE_RECOGNITION)
+        set(v) = sp.edit { putString("mic_source", v.name) }
+
+    /** 16000 = rééchantillonnage par le téléphone ; 48000 = capture native + filtre de Speech. */
+    var captureRate: Int
+        get() = sp.getInt("capture_rate", AudioRecorder.SAMPLE_RATE)
+        set(v) = sp.edit { putInt("capture_rate", v) }
+
+    fun captureConfig() = CaptureConfig(micSource, captureRate)
 
     fun wasAsked(permission: String) = sp.getBoolean("asked_$permission", false)
     fun markAsked(permission: String) = sp.edit { putBoolean("asked_$permission", true) }

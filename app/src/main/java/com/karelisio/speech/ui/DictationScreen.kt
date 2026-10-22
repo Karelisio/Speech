@@ -50,6 +50,7 @@ fun DictationScreen(modifier: Modifier = Modifier, vm: DictationViewModel = view
     val app = context.applicationContext as SpeechApp
     val ui by vm.ui.collectAsState()
     val level by vm.recorder.level.collectAsState()
+    val capture by vm.recorder.lastReport.collectAsState()
     val status by app.models.status.collectAsState()
     val withMic = rememberWithMicPermission()
     var refresh by remember { mutableIntStateOf(0) } // force la recomposition après un changement de réglage
@@ -129,6 +130,7 @@ fun DictationScreen(modifier: Modifier = Modifier, vm: DictationViewModel = view
                             "Ouverture micro : ${ui.micOpenMs ?: "—"} ms · chargement modèle : ${ui.loadMs ?: "—"} ms",
                         style = MaterialTheme.typography.bodySmall,
                     )
+                    capture?.let { Text(it.summary(), style = MaterialTheme.typography.bodySmall) }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(onClick = { copyText(context, "dictée", ui.text) }) { Text("Copier") }
                         OutlinedButton(onClick = { showSave = true }) { Text("Ajouter au benchmark") }

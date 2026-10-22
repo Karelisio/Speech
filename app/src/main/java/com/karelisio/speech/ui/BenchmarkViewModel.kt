@@ -124,7 +124,8 @@ class BenchmarkViewModel(application: Application) : AndroidViewModel(applicatio
             _ui.update { it.copy(message = "Clip trop court") }
             return
         }
-        viewModelScope.launch(Dispatchers.IO) { app.clips.add(audio, reference) }
+        val source = recorder.lastReport.value?.config?.label
+        viewModelScope.launch(Dispatchers.IO) { app.clips.add(audio, reference, source) }
     }
 
     fun importWav(uri: Uri, reference: String?) {
@@ -133,6 +134,8 @@ class BenchmarkViewModel(application: Application) : AndroidViewModel(applicatio
                 .onFailure { e -> _ui.update { it.copy(message = "Import impossible : ${e.message}") } }
         }
     }
+
+    fun share(context: android.content.Context, clip: BenchClip) = shareWav(context, app.clips.file(clip))
 
     fun play(clip: BenchClip) {
         viewModelScope.launch(Dispatchers.IO) { AudioPlayer.play(app.clips.samples(clip)) }

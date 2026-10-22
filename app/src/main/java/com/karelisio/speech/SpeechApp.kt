@@ -27,7 +27,7 @@ class SpeechApp : Application() {
     lateinit var clips: BenchClips
         private set
     /** Un seul enregistreur partagé : le micro n'est jamais ouvert deux fois. */
-    val recorder = AudioRecorder()
+    val recorder = AudioRecorder { prefs.captureConfig() }
     lateinit var bubble: BubbleState
         private set
     lateinit var controller: DictationController
