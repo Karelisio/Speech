@@ -65,7 +65,22 @@ class Screenshots {
     private fun home(status: HomeStatus, ui: DictationUi, level: Float = 0f) = HomeContent(
         status, ui, level, captureSummary = null,
         onToggleBubble = {}, onOrb = {}, onCopy = {}, onAddToBench = {}, onOpenPermissions = {}, onOpenModels = {},
+        recent = listOf(
+            com.karelisio.speech.text.HistoryEntry(1_760_000_000_000, "euh je pense qu'on pourrait se voir mardi non pardon mercredi", "Je pense qu'on pourrait se voir mercredi.", 820),
+            com.karelisio.speech.text.HistoryEntry(1_759_990_000_000, "Bonjour Marie, je t'envoie le compte rendu.", "Bonjour Marie, je t'envoie le compte rendu.", 410),
+        ),
     )
+
+    @Test @Config(qualifiers = "w411dp-h2200dp-xxhdpi")
+    fun homeCleanedTall() = shot("home_cleaned_tall") {
+        home(
+            status.copy(cleaner = "Qwen 2.5 1.5B"),
+            DictationUi(
+                text = "Je pense qu'on pourrait se voir mercredi.", raw = "euh je pense qu'on pourrait bah se voir mardi non pardon mercredi",
+                latencyMs = 905, audioMs = 5200, sttMs = 312, cleanMs = 593, liveSegments = 2,
+            ),
+        )
+    }
 
     @Test fun homeIdle() = shot("home_idle") { home(status, DictationUi()) }
 

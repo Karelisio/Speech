@@ -1,20 +1,45 @@
 package com.karelisio.speech.llm
 
-/** Liaison JNI vers llama.cpp (llm/src/main/cpp/llama_jni.cpp). */
-object LlamaNative {
+/** Opérations llama.cpp communes aux bibliothèques CPU et GPU. */
+interface LlamaApi {
+    val name: String
+    fun load(path: String, nCtx: Int, threads: Int, threadsBatch: Int): Long
+    fun free(ptr: Long)
+    fun abort(ptr: Long)
+    /** Met le prompt système en cache (KV). */
+    fun warm(ptr: Long, system: String): Boolean
+    /** Remplit le cache KV avec (système + début du texte), sans générer. */
+    fun prefill(ptr: Long, system: String, user: String): Boolean
+    fun complete(ptr: Long, system: String, user: String, maxRatio: Float, extra: Int): ByteArray?
+    /** [réutilisés, évalués, générés, ms prompt, ms génération]. */
+    fun lastStats(ptr: Long): DoubleArray
+    fun systemInfo(): String
+}
+
+/** Liaison JNI vers llama.cpp sur CPU (llm/src/main/cpp/llama_jni.cpp). */
+object LlamaNative : LlamaApi {
     init {
         System.loadLibrary("llama_jni")
     }
 
-    @JvmStatic external fun load(path: String, nCtx: Int, threads: Int, threadsBatch: Int): Long
-    @JvmStatic external fun free(ptr: Long)
-    @JvmStatic external fun abort(ptr: Long)
-    /** Met le prompt système en cache (KV). */
-    @JvmStatic external fun warm(ptr: Long, system: String): Boolean
-    /** Remplit le cache KV avec (système + début du texte), sans générer. */
-    @JvmStatic external fun prefill(ptr: Long, system: String, user: String): Boolean
-    @JvmStatic external fun complete(ptr: Long, system: String, user: String, maxRatio: Float, extra: Int): ByteArray?
-    /** [réutilisés, évalués, générés, ms prompt, ms génération]. */
-    @JvmStatic external fun lastStats(ptr: Long): DoubleArray
-    @JvmStatic external fun systemInfo(): String
+    override val name = "CPU"
+
+    override fun load(path: String, nCtx: Int, threads: Int, threadsBatch: Int) = nLoad(path, nCtx, threads, threadsBatch, 0)
+    override fun free(ptr: Long) = nFree(ptr)
+    override fun abort(ptr: Long) = nAbort(ptr)
+    override fun warm(ptr: Long, system: String) = nWarm(ptr, system)
+    override fun prefill(ptr: Long, system: String, user: String) = nPrefill(ptr, system, user)
+    override fun complete(ptr: Long, system: String, user: String, maxRatio: Float, extra: Int) =
+        nComplete(ptr, system, user, maxRatio, extra)
+    override fun lastStats(ptr: Long) = nLastStats(ptr)
+    override fun systemInfo() = nSystemInfo()
+
+    @JvmStatic private external fun nLoad(path: String, nCtx: Int, threads: Int, threadsBatch: Int, gpuLayers: Int): Long
+    @JvmStatic private external fun nFree(ptr: Long)
+    @JvmStatic private external fun nAbort(ptr: Long)
+    @JvmStatic private external fun nWarm(ptr: Long, system: String): Boolean
+    @JvmStatic private external fun nPrefill(ptr: Long, system: String, user: String): Boolean
+    @JvmStatic private external fun nComplete(ptr: Long, system: String, user: String, maxRatio: Float, extra: Int): ByteArray?
+    @JvmStatic private external fun nLastStats(ptr: Long): DoubleArray
+    @JvmStatic private external fun nSystemInfo(): String
 }

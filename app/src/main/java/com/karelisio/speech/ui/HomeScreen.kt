@@ -276,8 +276,8 @@ fun HomeContent(
                     }
                     if (ui.cleanMs != null) {
                         StatRow(
-                            "latence totale" to "$lat ms",
-                            "reconnaissance" to "${ui.sttMs ?: 0} ms",
+                            "total" to "$lat ms",
+                            "transcription" to "${ui.sttMs ?: 0} ms",
                             "nettoyage IA" to "${ui.cleanMs} ms",
                         )
                     } else {

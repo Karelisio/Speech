@@ -149,7 +149,7 @@ android {
             // Les .so sont chargés directement depuis l'APK (non compressés, alignés 16 Ko).
             useLegacyPackaging = false
             // API C/C++ de sherpa-onnx inutilisées : seul le JNI (+ onnxruntime) est chargé.
-            excludes += listOf("**/libsherpa-onnx-c-api.so", "**/libsherpa-onnx-cxx-api.so")
+            excludes += listOf("**/libsherpa-onnx-c-api.so", "**/libsherpa-onnx-cxx-api.so", "**/libOpenCL.so")
         }
     }
 }
@@ -157,6 +157,7 @@ android {
 dependencies {
     implementation(files(sherpaAar))
     implementation(project(":llm"))
+    implementation(project(":llmgpu"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)

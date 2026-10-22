@@ -84,6 +84,7 @@ class SpeechApp : Application() {
         history = History(this)
         dictionary = Dictionary.parse(prefs.dictionary)
         cleaners.terms = dictionary.terms
+        cleaners.useGpu = prefs.llmGpu
         pipeline = DictationPipeline(this, appScope)
         controller = DictationController(this)
         AppLog.i("App", "démarrage\n" + DeviceInfo.summary(this))
@@ -127,6 +128,7 @@ class SpeechApp : Application() {
             modelId = id,
             threads = prefs.effectiveThreads(),
             whisperDynamicAudioCtx = prefs.whisperDynamicAudioCtx,
+            provider = if (models.find(id)?.engine == com.karelisio.speech.models.EngineKind.PARAKEET) prefs.sttProvider else "cpu",
         )
     }
 }

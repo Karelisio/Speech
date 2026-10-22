@@ -15,3 +15,4 @@ dependencyResolutionManagement {
 rootProject.name = "Speech"
 include(":app")
 include(":llm")
+include(":llmgpu")

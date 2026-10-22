@@ -20,6 +20,7 @@ import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.RecordVoiceOver
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.DarkMode
+import androidx.compose.material.icons.rounded.DeveloperBoard
 import androidx.compose.material.icons.rounded.Psychology
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.Info
@@ -137,6 +138,11 @@ fun SettingsScreen(modifier: Modifier = Modifier, onOpenPermissions: () -> Unit,
             ) { prefs.threads = it; changed() }
             GroupDivider()
             SegmentedRow(
+                Icons.Rounded.DeveloperBoard, "Accélérateur (Parakeet)", "À choisir d'après le benchmark",
+                listOf("cpu" to "CPU", "nnapi" to "NNAPI", "xnnpack" to "XNNPACK"), prefs.sttProvider,
+            ) { prefs.sttProvider = it; changed() }
+            GroupDivider()
+            SegmentedRow(
                 Icons.Rounded.Translate, "Langue", "Parakeet détecte la langue tout seul",
                 listOf("fr" to "Français", "auto" to "Auto", "en" to "Anglais"), prefs.language,
             ) { prefs.language = it; changed() }
@@ -190,6 +196,17 @@ fun SettingsScreen(modifier: Modifier = Modifier, onOpenPermissions: () -> Unit,
                     Icons.Rounded.Speed, "Threads IA", "À mesurer au benchmark",
                     listOf(2 to "2", 3 to "3", 4 to "4", 6 to "6"), prefs.llmThreads,
                 ) { prefs.llmThreads = it; changed() }
+                GroupDivider()
+                val gpuError = remember { com.karelisio.speech.llm.LlamaNativeGpu.loadError }
+                SegmentedRow(
+                    Icons.Rounded.DeveloperBoard, "Accélérateur IA",
+                    if (gpuError == null) "GPU Adreno via OpenCL, à comparer au CPU (benchmark)" else "GPU indisponible sur ce téléphone : $gpuError",
+                    listOf(false to "CPU", true to "GPU"), prefs.llmGpu,
+                ) {
+                    prefs.llmGpu = it
+                    app.cleaners.useGpu = it
+                    changed()
+                }
             }
         }
 

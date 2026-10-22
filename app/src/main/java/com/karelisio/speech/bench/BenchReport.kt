@@ -27,6 +27,7 @@ object BenchReport {
         appendLine(DeviceInfo.summary(context))
         appendLine("whisper.cpp : " + runCatching { WhisperNative.systemInfo().trim() }.getOrDefault("?"))
         appendLine("llama.cpp : " + runCatching { com.karelisio.speech.llm.LlamaNative.systemInfo().trim() }.getOrDefault("?"))
+        appendLine("llama.cpp GPU : " + runCatching { com.karelisio.speech.llm.LlamaNativeGpu.systemInfo().trim() }.getOrDefault("?"))
         appendLine("```")
         val usedClips = clips.filter { c -> results.any { r -> r.clips.any { it.clipId == c.id } } }
         appendLine("Clips : ${usedClips.size} (${"%.1f".format(usedClips.sumOf { it.durationMs } / 1000.0)} s au total)" +
@@ -52,7 +53,7 @@ object BenchReport {
         }
         if (results.any { it.meanCleanMs != null }) {
             appendLine()
-            appendLine("### Nettoyage IA")
+            appendLine("### Nettoyage IA (" + ((context.applicationContext as com.karelisio.speech.SpeechApp).cleaners.backendName ?: "?") + ")")
             appendLine("| Config | Nettoyage moy. ms | WER brut | WER après IA |")
             appendLine("|---|---|---|---|")
             for (r in results.filter { it.meanCleanMs != null }) {

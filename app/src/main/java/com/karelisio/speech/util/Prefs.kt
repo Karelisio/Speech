@@ -115,6 +115,16 @@ class Prefs(context: Context) {
         get() = sp.getInt("release_after_min", 0)
         set(v) = sp.edit { putInt("release_after_min", v) }
 
+    /** Accélérateur onnxruntime pour Parakeet : "cpu", "nnapi", "xnnpack" (à mesurer). */
+    var sttProvider: String
+        get() = sp.getString("stt_provider", "cpu") ?: "cpu"
+        set(v) = sp.edit { putString("stt_provider", v) }
+
+    /** Nettoyage IA sur le GPU (OpenCL Adreno) plutôt que le CPU : à mesurer. */
+    var llmGpu: Boolean
+        get() = sp.getBoolean("llm_gpu", false)
+        set(v) = sp.edit { putBoolean("llm_gpu", v) }
+
     fun wasAsked(permission: String) = sp.getBoolean("asked_$permission", false)
     fun markAsked(permission: String) = sp.edit { putBoolean("asked_$permission", true) }
 

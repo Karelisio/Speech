@@ -73,6 +73,13 @@ Cible : Honor Magic7 Pro (Snapdragon 8 Elite), `arm64-v8a` uniquement, minSdk 29
 - **Mémoire** : libération des modèles après 5 / 15 / 60 min sans dictée ; test d'endurance
   de 100 dictées (RSS relevée toutes les 10) dans le benchmark.
 
+- **Accélération matérielle (à mesurer)** :
+  - Parakeet : fournisseur onnxruntime CPU / NNAPI (NPU) / XNNPACK, au choix dans le
+    benchmark et les réglages (repli CPU si indisponible) ;
+  - llama.cpp : variante GPU OpenCL (noyaux Adreno) dans un module `:llmgpu`, liée au
+    `libOpenCL.so` du téléphone (`uses-native-library`, chargeur ICD Khronos pour l'édition
+    de liens seulement) et chargée à la demande ; repli automatique sur le CPU.
+
 ## Moteur par défaut (benchmark étape 1, Magic7 Pro)
 
 | Config | 10 s d'audio → texte | WER |

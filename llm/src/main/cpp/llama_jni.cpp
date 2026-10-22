@@ -8,6 +8,14 @@
 
 #include "llama.h"
 
+// Le même source sert à deux bibliothèques : CPU (LlamaNative) et GPU OpenCL (LlamaNativeGpu).
+#ifndef JNI_CLASS
+#define JNI_CLASS com_karelisio_speech_llm_LlamaNative
+#endif
+#define JNI_CAT2(a, b) a##_##b
+#define JNI_CAT(a, b) JNI_CAT2(a, b)
+#define JNI_FN(name) JNI_CAT(JNI_CAT(Java, JNI_CLASS), name)
+
 #define TAG "SpeechLlama"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
 #define LOGW(...) __android_log_print(ANDROID_LOG_WARN, TAG, __VA_ARGS__)
@@ -100,13 +108,13 @@ bool prefill(Llm *l, const std::vector<llama_token> &tokens) {
 extern "C" {
 
 JNIEXPORT jlong JNICALL
-Java_com_karelisio_speech_llm_LlamaNative_load(JNIEnv *env, jobject, jstring jpath, jint n_ctx, jint threads, jint threads_batch) {
+JNI_FN(nLoad)(JNIEnv *env, jobject, jstring jpath, jint n_ctx, jint threads, jint threads_batch, jint gpu_layers) {
     llama_log_set(log_cb, nullptr);
     llama_backend_init();
     std::string path = jstr(env, jpath);
 
     llama_model_params mp = llama_model_default_params();
-    mp.n_gpu_layers = 0;
+    mp.n_gpu_layers = gpu_layers;
     llama_model *model = llama_model_load_from_file(path.c_str(), mp);
     if (!model) {
         LOGW("chargement impossible : %s", path.c_str());
@@ -116,6 +124,10 @@ Java_com_karelisio_speech_llm_LlamaNative_load(JNIEnv *env, jobject, jstring jpa
     l->model = model;
     l->vocab = llama_model_get_vocab(model);
     if (const char *t = llama_model_chat_template(model, nullptr)) l->tmpl = t;
+    for (size_t i = 0; i < ggml_backend_dev_count(); ++i) {
+        ggml_backend_dev_t d = ggml_backend_dev_get(i);
+        LOGI("périphérique ggml : %s (%s)", ggml_backend_dev_name(d), ggml_backend_dev_description(d));
+    }
 
     llama_context_params cp = llama_context_default_params();
     cp.n_ctx = (uint32_t) n_ctx;
@@ -138,7 +150,7 @@ Java_com_karelisio_speech_llm_LlamaNative_load(JNIEnv *env, jobject, jstring jpa
 }
 
 JNIEXPORT void JNICALL
-Java_com_karelisio_speech_llm_LlamaNative_free(JNIEnv *, jobject, jlong ptr) {
+JNI_FN(nFree)(JNIEnv *, jobject, jlong ptr) {
     auto *l = reinterpret_cast<Llm *>(ptr);
     if (!l) return;
     llama_sampler_free(l->sampler);
@@ -148,13 +160,13 @@ Java_com_karelisio_speech_llm_LlamaNative_free(JNIEnv *, jobject, jlong ptr) {
 }
 
 JNIEXPORT void JNICALL
-Java_com_karelisio_speech_llm_LlamaNative_abort(JNIEnv *, jobject, jlong ptr) {
+JNI_FN(nAbort)(JNIEnv *, jobject, jlong ptr) {
     if (auto *l = reinterpret_cast<Llm *>(ptr)) l->abort.store(true);
 }
 
 /** Évalue le prompt système seul et le garde en cache : les dictées suivantes ne le recalculent pas. */
 JNIEXPORT jboolean JNICALL
-Java_com_karelisio_speech_llm_LlamaNative_warm(JNIEnv *env, jobject, jlong ptr, jstring jsystem) {
+JNI_FN(nWarm)(JNIEnv *env, jobject, jlong ptr, jstring jsystem) {
     auto *l = reinterpret_cast<Llm *>(ptr);
     if (!l) return JNI_FALSE;
     l->abort.store(false);
@@ -172,7 +184,7 @@ Java_com_karelisio_speech_llm_LlamaNative_warm(JNIEnv *env, jobject, jlong ptr, 
  * `max_ratio` × tokens d'entrée + `extra`. Renvoie l'UTF-8 brut (null en cas d'échec).
  */
 JNIEXPORT jbyteArray JNICALL
-Java_com_karelisio_speech_llm_LlamaNative_complete(
+JNI_FN(nComplete)(
         JNIEnv *env, jobject, jlong ptr, jstring jsystem, jstring juser, jfloat max_ratio, jint extra) {
     auto *l = reinterpret_cast<Llm *>(ptr);
     if (!l) return nullptr;
@@ -218,7 +230,7 @@ Java_com_karelisio_speech_llm_LlamaNative_complete(
  * remplit le cache KV pour que l'appel final ne traite plus que la fin du texte.
  */
 JNIEXPORT jboolean JNICALL
-Java_com_karelisio_speech_llm_LlamaNative_prefill(JNIEnv *env, jobject, jlong ptr, jstring jsystem, jstring juser) {
+JNI_FN(nPrefill)(JNIEnv *env, jobject, jlong ptr, jstring jsystem, jstring juser) {
     auto *l = reinterpret_cast<Llm *>(ptr);
     if (!l) return JNI_FALSE;
     l->abort.store(false);
@@ -235,7 +247,7 @@ Java_com_karelisio_speech_llm_LlamaNative_prefill(JNIEnv *env, jobject, jlong pt
 
 /** [tokens réutilisés, tokens évalués, tokens générés, ms prompt, ms génération] du dernier appel. */
 JNIEXPORT jdoubleArray JNICALL
-Java_com_karelisio_speech_llm_LlamaNative_lastStats(JNIEnv *env, jobject, jlong ptr) {
+JNI_FN(nLastStats)(JNIEnv *env, jobject, jlong ptr) {
     auto *l = reinterpret_cast<Llm *>(ptr);
     jdoubleArray arr = env->NewDoubleArray(5);
     if (l) {
@@ -246,7 +258,7 @@ Java_com_karelisio_speech_llm_LlamaNative_lastStats(JNIEnv *env, jobject, jlong 
 }
 
 JNIEXPORT jstring JNICALL
-Java_com_karelisio_speech_llm_LlamaNative_systemInfo(JNIEnv *env, jobject) {
+JNI_FN(nSystemInfo)(JNIEnv *env, jobject) {
     return env->NewStringUTF(llama_print_system_info());
 }
 

@@ -25,6 +25,7 @@ import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.DeveloperBoard
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.FileUpload
 import androidx.compose.material.icons.rounded.FormatQuote
@@ -228,6 +229,16 @@ fun BenchmarkScreen(modifier: Modifier = Modifier, vm: BenchmarkViewModel = view
                         m in ui.modes, { vm.toggleMode(m) }, label = { Text(m.label) },
                         enabled = m == VadMode.OFF || vm.vadReady,
                     )
+                }
+            }
+            GroupDivider()
+            SettingRow(Icons.Rounded.DeveloperBoard, "Accélérateur (Parakeet)", "CPU, NPU via NNAPI, XNNPACK : repli CPU si indisponible")
+            FlowRow(
+                Modifier.padding(start = 72.dp, end = 16.dp, bottom = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                listOf("cpu" to "CPU", "nnapi" to "NNAPI", "xnnpack" to "XNNPACK").forEach { (p, label) ->
+                    FilterChip(p in ui.providers, { vm.toggleProvider(p) }, label = { Text(label) })
                 }
             }
             GroupDivider()

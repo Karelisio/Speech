@@ -31,6 +31,8 @@ data class BenchUi(
     val repetitions: Int = 1,
     val modes: Set<VadMode> = setOf(VadMode.OFF, VadMode.TRIM, VadMode.SEGMENTS),
     val clean: Boolean = false,
+    /** Accélérateurs onnxruntime testés pour Parakeet. */
+    val providers: Set<String> = setOf("cpu"),
     val endurance: com.karelisio.speech.bench.EnduranceResult? = null,
     val running: Boolean = false,
     val progressText: String = "",
@@ -73,6 +75,9 @@ class BenchmarkViewModel(application: Application) : AndroidViewModel(applicatio
         it.copy(modes = if (m in it.modes && it.modes.size > 1) it.modes - m else it.modes + m)
     }
     fun setClean(v: Boolean) = _ui.update { it.copy(clean = v) }
+    fun toggleProvider(p: String) = _ui.update {
+        it.copy(providers = if (p in it.providers && it.providers.size > 1) it.providers - p else it.providers + p)
+    }
     val llmReady: Boolean get() = app.cleanerModelId() != null
     val vadReady: Boolean get() = app.models.vadModel?.let { app.models.isReady(it.id) } == true
 
@@ -82,7 +87,8 @@ class BenchmarkViewModel(application: Application) : AndroidViewModel(applicatio
             val kind = app.models.find(id)!!.engine
             s.threads.sorted().flatMap { t ->
                 val ctxModes = if (kind == EngineKind.WHISPER && s.compareWhisperCtx) listOf(false, true) else listOf(false)
-                ctxModes.map { dyn -> EngineConfig(id, t, whisperDynamicAudioCtx = dyn) }
+                val providers = if (kind == EngineKind.PARAKEET) s.providers.sorted() else listOf("cpu")
+                ctxModes.flatMap { dyn -> providers.map { p -> EngineConfig(id, t, whisperDynamicAudioCtx = dyn, provider = p) } }
             }
         }
     }

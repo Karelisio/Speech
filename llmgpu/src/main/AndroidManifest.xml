@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Pilote OpenCL du constructeur (Adreno), exposé aux apps par /vendor/etc/public.libraries.txt. -->
+        <uses-native-library android:name="libOpenCL.so" android:required="false" />
+    </application>
+</manifest>
