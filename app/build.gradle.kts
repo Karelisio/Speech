@@ -53,9 +53,8 @@ android {
         // Numéro de run CI : chaque APK publié remplace le précédent sans désinstallation.
         val build = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
         versionCode = build
-        // Tag « v1.2.3 » → 1.2.3 ; sinon build de développement.
-        val tag = System.getenv("GITHUB_REF_NAME")?.takeIf { System.getenv("GITHUB_REF_TYPE") == "tag" && it.startsWith("v") }
-        versionName = tag?.removePrefix("v") ?: "1.0.0+$build"
+        // Version publiée : fichier VERSION à la racine (la CI crée la release vX.Y.Z correspondante).
+        versionName = rootProject.file("VERSION").readText().trim()
         buildConfigField("String", "GIT_SHA", "\"$gitSha\"")
         val repo = System.getenv("GITHUB_REPOSITORY") ?: "Karelisio/Speech"
         buildConfigField("String", "UPDATE_URL", "\"https://github.com/$repo/releases/download/dev-latest/version.json\"")

@@ -68,8 +68,8 @@ git submodule update --init --recursive
 
 La CI (`.github/workflows/android.yml`) vérifie le catalogue de modèles
 (`scripts/check_models.py`), lance les tests et publie l'APK : chaque push met à jour la
-pré-release `dev-latest` (utilisée par la mise à jour in-app), chaque tag `v*` crée une release
-stable avec les notes de `docs/release-notes/`.
+pré-release `dev-latest` (utilisée par la mise à jour in-app) ; la première build d'une nouvelle
+version (fichier `VERSION`) crée la release stable `vX.Y.Z` avec les notes de `docs/release-notes/`.
 
 ### Signature
 
