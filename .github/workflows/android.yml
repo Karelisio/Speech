@@ -107,6 +107,21 @@ jobs:
             gh release create "$TAG" --title "Speech (dev) ${GITHUB_SHA::8}" --notes "$NOTES" --prerelease
           fi
           gh release upload "$TAG" out/speech.apk --clobber
+          # Manifeste lu par la mise à jour in-app, publié après l'APK pour ne jamais pointer vers un APK absent.
+          python3 - <<'PY'
+          import hashlib, json, os, subprocess
+          sha = hashlib.sha256(open("out/speech.apk", "rb").read()).hexdigest()
+          run = int(os.environ["GITHUB_RUN_NUMBER"])
+          json.dump({
+              "versionCode": run,
+              "versionName": f"0.1.{run}",
+              "commit": os.environ["GITHUB_SHA"][:8],
+              "notes": subprocess.check_output(["git", "log", "-1", "--format=%s"], text=True).strip(),
+              "apkSha256": sha,
+              "apkSize": os.path.getsize("out/speech.apk"),
+          }, open("out/version.json", "w"), ensure_ascii=False, indent=2)
+          PY
+          gh release upload "$TAG" out/version.json --clobber
 
       - uses: actions/upload-artifact@v7
         if: failure()

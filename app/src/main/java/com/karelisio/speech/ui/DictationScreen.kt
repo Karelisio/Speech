@@ -63,7 +63,6 @@ fun DictationScreen(modifier: Modifier = Modifier, vm: DictationViewModel = view
         modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        BubbleSettingsCard()
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (ready.isEmpty()) {

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Settings
@@ -35,9 +36,10 @@ private data class Tab(val title: String, val icon: ImageVector)
 
 private val TABS = listOf(
     Tab("Dictée", Icons.Filled.Home),
-    Tab("Modèles", Icons.Filled.Settings),
+    Tab("Modèles", Icons.AutoMirrored.Filled.List),
     Tab("Benchmark", Icons.Filled.Build),
-    Tab("Journal", Icons.AutoMirrored.Filled.List),
+    Tab("Réglages", Icons.Filled.Settings),
+    Tab("Journal", Icons.Filled.Info),
 )
 
 class MainActivity : ComponentActivity() {
@@ -88,6 +90,7 @@ class MainActivity : ComponentActivity() {
                         0 -> DictationScreen(m)
                         1 -> ModelsScreen(m)
                         2 -> BenchmarkScreen(m)
+                        3 -> SettingsScreen(m, onOpenPermissions = { showPermissions = true })
                         else -> LogScreen(m)
                     }
                 }

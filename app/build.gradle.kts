@@ -55,6 +55,8 @@ android {
         versionCode = build
         versionName = "0.1.$build"
         buildConfigField("String", "GIT_SHA", "\"$gitSha\"")
+        val repo = System.getenv("GITHUB_REPOSITORY") ?: "Karelisio/Speech"
+        buildConfigField("String", "UPDATE_URL", "\"https://github.com/$repo/releases/download/dev-latest/version.json\"")
 
         ndk {
             abiFilters += "arm64-v8a"

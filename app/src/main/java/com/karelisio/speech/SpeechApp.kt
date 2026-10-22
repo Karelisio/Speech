@@ -6,6 +6,7 @@ import com.karelisio.speech.bench.BenchClips
 import com.karelisio.speech.dictation.DictationController
 import com.karelisio.speech.overlay.BubbleState
 import com.karelisio.speech.stt.EngineConfig
+import com.karelisio.speech.update.UpdateManager
 import com.karelisio.speech.models.ModelManager
 import com.karelisio.speech.stt.EngineHolder
 import com.karelisio.speech.util.AppLog
@@ -31,6 +32,8 @@ class SpeechApp : Application() {
         private set
     lateinit var controller: DictationController
         private set
+    lateinit var updates: UpdateManager
+        private set
 
     override fun onCreate() {
         super.onCreate()
@@ -41,6 +44,7 @@ class SpeechApp : Application() {
         clips = BenchClips(this)
         bubble = BubbleState(prefs)
         controller = DictationController(this)
+        updates = UpdateManager(this, appScope)
         AppLog.i("App", "démarrage\n" + DeviceInfo.summary(this))
     }
 
