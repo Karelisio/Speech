@@ -131,6 +131,19 @@ android {
         buildConfig = true
     }
 
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+            all { test ->
+                // Captures d'écran (Roborazzi) : seulement avec -Pscreenshots, pas en CI.
+                if (!project.hasProperty("screenshots")) test.exclude("**/screenshots/**")
+                test.systemProperty("roborazzi.test.record", "true")
+                System.getenv("ROBOLECTRIC_REPO")?.let { test.systemProperty("robolectric.dependency.repo.url", it) }
+                test.maxHeapSize = "3g"
+            }
+        }
+    }
+
     packaging {
         jniLibs {
             // Les .so sont chargés directement depuis l'APK (non compressés, alignés 16 Ko).
@@ -153,9 +166,16 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.material.icons.core)
+    implementation(libs.androidx.compose.material.icons.extended)
     implementation(libs.kotlinx.coroutines.android)
     debugImplementation(libs.androidx.compose.ui.tooling)
 
     testImplementation(libs.junit)
     testImplementation(libs.org.json)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.roborazzi)
+    testImplementation(libs.roborazzi.compose)
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation(libs.androidx.compose.ui.test.junit4)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
 }

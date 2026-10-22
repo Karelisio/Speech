@@ -6,6 +6,7 @@ import androidx.core.content.edit
 import com.karelisio.speech.audio.AudioRecorder
 import com.karelisio.speech.audio.CaptureConfig
 import com.karelisio.speech.audio.MicSource
+import com.karelisio.speech.ui.theme.ThemeMode
 
 class Prefs(context: Context) {
     private val sp: SharedPreferences = context.getSharedPreferences("speech", Context.MODE_PRIVATE)
@@ -76,6 +77,14 @@ class Prefs(context: Context) {
         set(v) = sp.edit { putInt("capture_rate_v2", v) }
 
     fun captureConfig() = CaptureConfig(micSource, captureRate)
+
+    var themeMode: ThemeMode
+        get() = runCatching { ThemeMode.valueOf(sp.getString("theme_mode", null)!!) }.getOrDefault(ThemeMode.SYSTEM)
+        set(v) = sp.edit { putString("theme_mode", v.name) }
+
+    var dynamicColor: Boolean
+        get() = sp.getBoolean("dynamic_color", true)
+        set(v) = sp.edit { putBoolean("dynamic_color", v) }
 
     fun wasAsked(permission: String) = sp.getBoolean("asked_$permission", false)
     fun markAsked(permission: String) = sp.edit { putBoolean("asked_$permission", true) }

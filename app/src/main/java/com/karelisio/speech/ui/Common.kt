@@ -24,4 +24,4 @@ fun <T> Dropdown(label: String, options: List<Pair<T, String>>, onSelect: (T) ->
     }
 }
 
-fun formatMb(bytes: Long): String = if (bytes >= 1_000_000_000) "%.2f Go".format(bytes / 1e9) else "${bytes / 1_000_000} Mo"
+fun formatMb(bytes: Long): String = if (bytes >= 1_000_000_000) "%.1f Go".format(bytes / 1e9) else "${bytes / 1_000_000} Mo"

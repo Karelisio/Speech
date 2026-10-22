@@ -14,7 +14,10 @@ data class ModelInfo(
     val repo: String,
     val revision: String,
     val files: List<ModelFile>,
+    val tags: List<String> = emptyList(),
 ) {
+    /** Nom court pour les étiquettes (« Parakeet TDT 0.6B v3 »). */
+    val shortName: String get() = name.substringBefore(" ·")
     val totalSize: Long get() = files.sumOf { it.size }
     fun url(f: ModelFile) = "https://huggingface.co/$repo/resolve/$revision/${f.path}"
 }
@@ -32,6 +35,7 @@ object ModelCatalog {
                 description = o.optString("description"),
                 repo = o.getString("repo"),
                 revision = o.optString("revision", "main"),
+                tags = o.optJSONArray("tags")?.let { t -> (0 until t.length()).map { t.getString(it) } } ?: emptyList(),
                 files = (0 until files.length()).map { j ->
                     val f = files.getJSONObject(j)
                     ModelFile(

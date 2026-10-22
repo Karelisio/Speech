@@ -1,5 +1,12 @@
 # Speech
 
+<p>
+  <img src="docs/screenshots/home_result.png" width="24%">
+  <img src="docs/screenshots/home_recording_dark.png" width="24%">
+  <img src="docs/screenshots/models.png" width="24%">
+  <img src="docs/screenshots/settings_dark.png" width="24%">
+</p>
+
 Dictée vocale Android 100 % locale (clone de Wispr Flow). Aucun appel réseau hors
 téléchargement initial des modèles depuis Hugging Face.
 
@@ -35,6 +42,14 @@ Cible : Honor Magic7 Pro (Snapdragon 8 Elite), `arm64-v8a` uniquement, minSdk 29
 | Parakeet TDT 0.6B v3 int8, 4 threads | 0,69 s | 9,4 % |
 | Whisper large-v3-turbo q8_0, 6 threads | 17,8 s | 9,4 % |
 | Whisper small q8_0, ctx dynamique | 0,9 s | 18 % |
+
+## Captures d'écran (sans téléphone)
+
+Rendu des écrans sur le JVM (Robolectric + Roborazzi), exclu de la CI :
+
+```bash
+./gradlew -Pscreenshots testDebugUnitTest --tests '*Screenshots*'   # → app/build/screenshots/
+```
 
 ## Build
 

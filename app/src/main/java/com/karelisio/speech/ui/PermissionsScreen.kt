@@ -13,11 +13,25 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AccessibilityNew
+import androidx.compose.material.icons.rounded.BatteryChargingFull
+import androidx.compose.material.icons.rounded.DoneAll
+import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.PhoneAndroid
+import androidx.compose.material.icons.rounded.Security
+import androidx.compose.material.icons.rounded.VerifiedUser
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -28,7 +42,10 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -37,6 +54,9 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.karelisio.speech.SpeechApp
 import com.karelisio.speech.util.AppPermission
 import com.karelisio.speech.util.AppPermissions
+import com.karelisio.speech.ui.components.HeroCard
+import com.karelisio.speech.ui.components.IconBadge
+import com.karelisio.speech.ui.components.TagChip
 
 private fun runtimePermission(p: AppPermission): String? = when (p) {
     AppPermission.MICROPHONE -> Manifest.permission.RECORD_AUDIO
@@ -101,52 +121,114 @@ fun PermissionsScreen(modifier: Modifier = Modifier, onDone: () -> Unit) {
     }
 
     val allOk = steps.all { granted[it] == true }
+    PermissionsContent(
+        modifier = modifier,
+        steps = steps,
+        granted = granted,
+        onRequest = ::request,
+        onAll = { attempted.clear(); chaining = true; tick++ },
+        onOpenSettings = { AppPermissions.openSettings(context, it) },
+        onAppDetails = { AppPermissions.openAppDetails(context) },
+        onConfirmManual = { prefs.magicOsConfirmed = !(granted[it] == true); tick++ },
+        onDone = onDone,
+        allOk = allOk,
+    )
+}
+
+private fun iconFor(p: AppPermission): ImageVector = when (p) {
+    AppPermission.MICROPHONE -> Icons.Rounded.Mic
+    AppPermission.NOTIFICATIONS -> Icons.Rounded.Notifications
+    AppPermission.BATTERY -> Icons.Rounded.BatteryChargingFull
+    AppPermission.ACCESSIBILITY -> Icons.Rounded.AccessibilityNew
+    AppPermission.MAGICOS -> Icons.Rounded.PhoneAndroid
+}
+
+@Composable
+fun PermissionsContent(
+    steps: List<AppPermission>,
+    granted: Map<AppPermission, Boolean>,
+    onRequest: (AppPermission) -> Unit,
+    onAll: () -> Unit,
+    onOpenSettings: (AppPermission) -> Unit,
+    onAppDetails: () -> Unit,
+    onConfirmManual: (AppPermission) -> Unit,
+    onDone: () -> Unit,
+    allOk: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val s = MaterialTheme.colorScheme
+    val done = steps.count { granted[it] == true }
     Column(
-        modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+        modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text(
-            "Speech a besoin de ces autorisations pour dicter dans n'importe quelle app. " +
-                "Tout reste sur le téléphone.",
-            style = MaterialTheme.typography.bodyMedium,
-        )
+        HeroCard(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconBadge(
+                        if (allOk) Icons.Rounded.VerifiedUser else Icons.Rounded.Security,
+                        container = s.surface.copy(alpha = 0.7f), content = s.primary, size = 48,
+                    )
+                    Spacer(Modifier.width(14.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(if (allOk) "Tout est prêt" else "Presque prêt", style = MaterialTheme.typography.titleLarge, color = s.onPrimaryContainer)
+                        Text("$done sur ${steps.size} autorisations", style = MaterialTheme.typography.bodyMedium, color = s.onPrimaryContainer.copy(alpha = 0.8f))
+                    }
+                }
+                LinearProgressIndicator(
+                    progress = { done.toFloat() / steps.size },
+                    modifier = Modifier.fillMaxWidth().height(8.dp),
+                    strokeCap = StrokeCap.Round,
+                    drawStopIndicator = {},
+                )
+                Text(
+                    "Speech dicte dans n'importe quelle app. Tout reste sur le téléphone, rien n'est envoyé.",
+                    style = MaterialTheme.typography.bodySmall, color = s.onPrimaryContainer.copy(alpha = 0.8f),
+                )
+            }
+        }
         if (!allOk) {
-            Button(onClick = { attempted.clear(); chaining = true; tick++ }, modifier = Modifier.fillMaxWidth()) {
-                Text("Tout autoriser")
+            Button(onClick = onAll, modifier = Modifier.fillMaxWidth().height(52.dp)) {
+                Icon(Icons.Rounded.DoneAll, null); Spacer(Modifier.width(10.dp)); Text("Tout autoriser")
             }
         }
         steps.forEach { p ->
             val ok = granted[p] == true
-            Card(
-                Modifier.fillMaxWidth(),
-                colors = if (ok) CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
-                else CardDefaults.cardColors(),
-            ) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text((if (ok) "✓ " else "• ") + p.title, style = MaterialTheme.typography.titleMedium)
-                    Text(p.why, style = MaterialTheme.typography.bodySmall)
-                    if (AppPermissions.isManual(p)) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedButton(onClick = { AppPermissions.openSettings(context, p) }) { Text("Ouvrir les réglages") }
-                            TextButton(onClick = { prefs.magicOsConfirmed = !ok; tick++ }) {
-                                Text(if (ok) "Annuler" else "C'est fait")
-                            }
+            Surface(shape = MaterialTheme.shapes.large, color = s.surfaceContainerLow) {
+                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconBadge(
+                            iconFor(p),
+                            container = if (ok) s.tertiaryContainer else s.secondaryContainer,
+                            content = if (ok) s.onTertiaryContainer else s.onSecondaryContainer,
+                        )
+                        Spacer(Modifier.width(14.dp))
+                        Text(p.title, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                        if (ok) TagChip("Accordé ✓", s.tertiaryContainer, s.onTertiaryContainer)
+                        else TagChip("À faire", s.secondaryContainer, s.onSecondaryContainer)
+                    }
+                    if (!ok || AppPermissions.isManual(p)) {
+                        Text(p.why, style = MaterialTheme.typography.bodySmall, color = s.onSurfaceVariant)
+                    }
+                    when {
+                        AppPermissions.isManual(p) -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FilledTonalButton(onClick = { onOpenSettings(p) }) { Text("Ouvrir les réglages") }
+                            TextButton(onClick = { onConfirmManual(p) }) { Text(if (ok) "Annuler" else "C'est fait") }
                         }
-                    } else if (!ok && p == AppPermission.ACCESSIBILITY) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(onClick = { request(p) }) { Text("Ouvrir l'accessibilité") }
-                            OutlinedButton(onClick = { AppPermissions.openAppDetails(context) }) { Text("Infos de l'appli") }
+                        !ok && p == AppPermission.ACCESSIBILITY -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(onClick = { onRequest(p) }) { Text("Activer") }
+                            OutlinedButton(onClick = onAppDetails) { Text("Infos de l'appli") }
                         }
-                    } else if (!ok) {
-                        Button(onClick = { request(p) }) { Text("Autoriser") }
+                        !ok -> Button(onClick = { onRequest(p) }) { Text("Autoriser") }
                     }
                 }
             }
         }
         if (allOk) {
-            Button(onClick = onDone, modifier = Modifier.fillMaxWidth()) { Text("Continuer") }
+            Button(onClick = onDone, modifier = Modifier.fillMaxWidth().height(52.dp)) { Text("Commencer") }
         } else {
-            OutlinedButton(onClick = onDone, modifier = Modifier.fillMaxWidth()) { Text("Plus tard") }
+            TextButton(onClick = onDone, modifier = Modifier.fillMaxWidth()) { Text("Plus tard") }
         }
+        Spacer(Modifier.height(8.dp))
     }
 }

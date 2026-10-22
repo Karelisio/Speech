@@ -15,6 +15,8 @@ import com.karelisio.speech.util.Prefs
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import com.karelisio.speech.ui.theme.ThemeMode
 
 class SpeechApp : Application() {
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -34,6 +36,8 @@ class SpeechApp : Application() {
         private set
     lateinit var updates: UpdateManager
         private set
+    /** Thème choisi dans Réglages → Apparence. */
+    val appearance = MutableStateFlow(Appearance(ThemeMode.SYSTEM, true))
 
     override fun onCreate() {
         super.onCreate()
@@ -45,6 +49,7 @@ class SpeechApp : Application() {
         bubble = BubbleState(prefs)
         controller = DictationController(this)
         updates = UpdateManager(this, appScope)
+        appearance.value = Appearance(prefs.themeMode, prefs.dynamicColor)
         AppLog.i("App", "démarrage\n" + DeviceInfo.summary(this))
     }
 
@@ -60,3 +65,5 @@ class SpeechApp : Application() {
         )
     }
 }
+
+data class Appearance(val mode: ThemeMode, val dynamicColor: Boolean)

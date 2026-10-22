@@ -4,7 +4,7 @@
       "id": "parakeet-tdt-0.6b-v3-int8",
       "name": "Parakeet TDT 0.6B v3 · int8",
       "engine": "parakeet",
-      "description": "sherpa-onnx. Recommandé : ~0,7 s pour 10 s d'audio, WER 9 % (mesuré sur Magic7 Pro).",
+      "description": "~0,7 s pour transcrire 10 s d'audio, 9 % d'erreurs en français (mesuré sur Magic7 Pro).",
       "repo": "csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8",
       "revision": "2bda32ec70b097a55adaa07d9a7173915b43cc78",
       "files": [
@@ -28,13 +28,18 @@
           "size": 93939,
           "sha256": "d58544679ea4bc6ac563d1f545eb7d474bd6cfa467f0a6e2c1dc1c7d37e3c35d"
         }
+      ],
+      "tags": [
+        "Recommandé",
+        "Rapide",
+        "Multilingue"
       ]
     },
     {
       "id": "whisper-large-v3-turbo-q8_0",
       "name": "Whisper large-v3-turbo · q8_0",
       "engine": "whisper",
-      "description": "whisper.cpp. Précision proche de Parakeet mais ~18 s pour 10 s d'audio sur CPU.",
+      "description": "Aussi précis que Parakeet, mais ~18 s pour 10 s d'audio sur le processeur.",
       "repo": "ggerganov/whisper.cpp",
       "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
       "files": [
@@ -43,13 +48,17 @@
           "size": 874188075,
           "sha256": "317eb69c11673c9de1e1f0d459b253999804ec71ac4c23c17ecf5fbe24e259a1"
         }
+      ],
+      "tags": [
+        "Précis",
+        "Lent sur CPU"
       ]
     },
     {
       "id": "whisper-small-q8_0",
       "name": "Whisper small · q8_0",
       "engine": "whisper",
-      "description": "whisper.cpp. Léger mais WER ~18 % en français.",
+      "description": "Petit et rapide, mais ~18 % d'erreurs en français.",
       "repo": "ggerganov/whisper.cpp",
       "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
       "files": [
@@ -58,6 +67,9 @@
           "size": 264464607,
           "sha256": "49c8fb02b65e6049d5fa6c04f81f53b867b5ec9540406812c643f177317f779f"
         }
+      ],
+      "tags": [
+        "Léger"
       ]
     }
   ]
