@@ -1,0 +1,51 @@
+{
+  "models": [
+    {
+      "id": "parakeet-tdt-0.6b-v3-int8",
+      "name": "Parakeet TDT 0.6B v3 · int8",
+      "engine": "parakeet",
+      "description": "sherpa-onnx. 25 langues européennes dont le français. Candidat le plus rapide.",
+      "repo": "csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8",
+      "revision": "main",
+      "files": [
+        { "path": "encoder.int8.onnx", "size": 0, "sha256": null },
+        { "path": "decoder.int8.onnx", "size": 0, "sha256": null },
+        { "path": "joiner.int8.onnx", "size": 0, "sha256": null },
+        { "path": "tokens.txt", "size": 0, "sha256": null }
+      ]
+    },
+    {
+      "id": "whisper-large-v3-turbo-q5_0",
+      "name": "Whisper large-v3-turbo · q5_0",
+      "engine": "whisper",
+      "description": "whisper.cpp. Meilleure précision attendue en français.",
+      "repo": "ggerganov/whisper.cpp",
+      "revision": "main",
+      "files": [
+        { "path": "ggml-large-v3-turbo-q5_0.bin", "size": 0, "sha256": null }
+      ]
+    },
+    {
+      "id": "whisper-large-v3-turbo-q8_0",
+      "name": "Whisper large-v3-turbo · q8_0",
+      "engine": "whisper",
+      "description": "whisper.cpp. Quantification plus fine que q5_0 : à comparer en vitesse et précision.",
+      "repo": "ggerganov/whisper.cpp",
+      "revision": "main",
+      "files": [
+        { "path": "ggml-large-v3-turbo-q8_0.bin", "size": 0, "sha256": null }
+      ]
+    },
+    {
+      "id": "whisper-small-q8_0",
+      "name": "Whisper small · q8_0",
+      "engine": "whisper",
+      "description": "whisper.cpp. Modèle léger de secours.",
+      "repo": "ggerganov/whisper.cpp",
+      "revision": "main",
+      "files": [
+        { "path": "ggml-small-q8_0.bin", "size": 0, "sha256": null }
+      ]
+    }
+  ]
+}

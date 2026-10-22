@@ -1,0 +1,94 @@
+name: Android
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NDK_VERSION: "30.0.16248370"
+  CMAKE_VERSION: "3.31.6"
+
+jobs:
+  models:
+    name: Catalogue de modèles (Hugging Face)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Vérifier URLs, tailles et SHA-256
+        run: python3 scripts/check_models.py --out models.resolved.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: models-resolved
+          path: models.resolved.json
+
+  build:
+    name: APK arm64-v8a
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: gradle/actions/setup-gradle@v5
+
+      - name: SDK, NDK et CMake
+        run: |
+          SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKM" --licenses > /dev/null || true
+          "$SDKM" --install "platforms;android-37.0" "build-tools;37.0.0" "ndk;$NDK_VERSION" "cmake;$CMAKE_VERSION" > /dev/null
+
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: android-arm64-${{ hashFiles('.gitmodules', 'app/src/main/cpp/CMakeLists.txt') }}
+          max-size: 2G
+
+      - name: Keystore de release
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+            echo "MURMURE_KEYSTORE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+            echo "Keystore de release utilisé"
+          else
+            echo "::warning::Secret KEYSTORE_BASE64 absent : APK signé avec la clé de dev (app/dev.keystore)"
+          fi
+
+      - name: Tests unitaires + APK release
+        env:
+          MURMURE_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          MURMURE_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          MURMURE_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          CMAKE_C_COMPILER_LAUNCHER: ccache
+        run: ./gradlew testDebugUnitTest assembleRelease --stacktrace
+
+      - name: Renommer l'APK
+        run: |
+          mkdir -p out
+          cp app/build/outputs/apk/release/app-release.apk "out/murmure-${GITHUB_SHA::8}.apk"
+          ls -la out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: murmure-apk-${{ github.sha }}
+          path: out/*.apk
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: test-reports
+          path: app/build/reports/
