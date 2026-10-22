@@ -5,7 +5,7 @@
 
 #include "whisper.h"
 
-#define TAG "MurmureWhisper"
+#define TAG "SpeechWhisper"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
 #define LOGW(...) __android_log_print(ANDROID_LOG_WARN, TAG, __VA_ARGS__)
 
@@ -42,7 +42,7 @@ std::string jstr(JNIEnv *env, jstring s) {
 extern "C" {
 
 JNIEXPORT jlong JNICALL
-Java_com_karelisio_murmure_stt_WhisperNative_init(JNIEnv *env, jobject, jstring jpath, jboolean flash_attn) {
+Java_com_karelisio_speech_stt_WhisperNative_init(JNIEnv *env, jobject, jstring jpath, jboolean flash_attn) {
     whisper_log_set(log_cb, nullptr);
     std::string path = jstr(env, jpath);
     whisper_context_params cp = whisper_context_default_params();
@@ -59,7 +59,7 @@ Java_com_karelisio_murmure_stt_WhisperNative_init(JNIEnv *env, jobject, jstring 
 }
 
 JNIEXPORT void JNICALL
-Java_com_karelisio_murmure_stt_WhisperNative_free(JNIEnv *, jobject, jlong ptr) {
+Java_com_karelisio_speech_stt_WhisperNative_free(JNIEnv *, jobject, jlong ptr) {
     auto *ctx = reinterpret_cast<Ctx *>(ptr);
     if (ctx == nullptr) return;
     whisper_free(ctx->wctx);
@@ -67,7 +67,7 @@ Java_com_karelisio_murmure_stt_WhisperNative_free(JNIEnv *, jobject, jlong ptr) 
 }
 
 JNIEXPORT void JNICALL
-Java_com_karelisio_murmure_stt_WhisperNative_abort(JNIEnv *, jobject, jlong ptr) {
+Java_com_karelisio_speech_stt_WhisperNative_abort(JNIEnv *, jobject, jlong ptr) {
     auto *ctx = reinterpret_cast<Ctx *>(ptr);
     if (ctx != nullptr) ctx->abort.store(true);
 }
@@ -75,7 +75,7 @@ Java_com_karelisio_murmure_stt_WhisperNative_abort(JNIEnv *, jobject, jlong ptr)
 // Retourne l'UTF-8 brut : NewStringUTF n'accepte que le « modified UTF-8 » et peut
 // planter sur une séquence invalide ou un emoji.
 JNIEXPORT jbyteArray JNICALL
-Java_com_karelisio_murmure_stt_WhisperNative_transcribe(
+Java_com_karelisio_speech_stt_WhisperNative_transcribe(
         JNIEnv *env, jobject, jlong ptr, jfloatArray jsamples, jstring jlang, jint n_threads,
         jstring jprompt, jint audio_ctx, jint beam_size) {
     auto *ctx = reinterpret_cast<Ctx *>(ptr);
@@ -134,7 +134,7 @@ Java_com_karelisio_murmure_stt_WhisperNative_transcribe(
 }
 
 JNIEXPORT jfloatArray JNICALL
-Java_com_karelisio_murmure_stt_WhisperNative_lastTimings(JNIEnv *env, jobject, jlong ptr) {
+Java_com_karelisio_speech_stt_WhisperNative_lastTimings(JNIEnv *env, jobject, jlong ptr) {
     auto *ctx = reinterpret_cast<Ctx *>(ptr);
     jfloatArray out = env->NewFloatArray(2);
     if (ctx != nullptr) {
@@ -145,7 +145,7 @@ Java_com_karelisio_murmure_stt_WhisperNative_lastTimings(JNIEnv *env, jobject, j
 }
 
 JNIEXPORT jstring JNICALL
-Java_com_karelisio_murmure_stt_WhisperNative_systemInfo(JNIEnv *env, jobject) {
+Java_com_karelisio_speech_stt_WhisperNative_systemInfo(JNIEnv *env, jobject) {
     return env->NewStringUTF(whisper_print_system_info());
 }
 

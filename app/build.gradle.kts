@@ -42,12 +42,12 @@ val gitSha: String = providers.exec {
 }.standardOutput.asText.get().trim().ifEmpty { "dev" }
 
 android {
-    namespace = "com.karelisio.murmure"
+    namespace = "com.karelisio.speech"
     compileSdk = 37
     ndkVersion = "30.0.16248370"
 
     defaultConfig {
-        applicationId = "com.karelisio.murmure"
+        applicationId = "com.karelisio.speech"
         minSdk = 29
         targetSdk = 37
         versionCode = 1
@@ -84,24 +84,24 @@ android {
         // Keystore de release fourni par la CI (secrets GitHub). À défaut, clé de dev
         // commitée pour que les APK successifs restent installables par-dessus.
         create("release") {
-            val ks = System.getenv("MURMURE_KEYSTORE")
+            val ks = System.getenv("SPEECH_KEYSTORE")
             if (ks != null && File(ks).exists()) {
                 storeFile = File(ks)
-                storePassword = System.getenv("MURMURE_KEYSTORE_PASSWORD")
-                keyAlias = System.getenv("MURMURE_KEY_ALIAS")
-                keyPassword = System.getenv("MURMURE_KEY_PASSWORD")
+                storePassword = System.getenv("SPEECH_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("SPEECH_KEY_ALIAS")
+                keyPassword = System.getenv("SPEECH_KEY_PASSWORD")
             } else {
                 storeFile = file("dev.keystore")
-                storePassword = "murmure-dev"
-                keyAlias = "murmure-dev"
-                keyPassword = "murmure-dev"
+                storePassword = "speech-dev"
+                keyAlias = "speech-dev"
+                keyPassword = "speech-dev"
             }
         }
         getByName("debug") {
             storeFile = file("dev.keystore")
-            storePassword = "murmure-dev"
-            keyAlias = "murmure-dev"
-            keyPassword = "murmure-dev"
+            storePassword = "speech-dev"
+            keyAlias = "speech-dev"
+            keyPassword = "speech-dev"
         }
     }
 

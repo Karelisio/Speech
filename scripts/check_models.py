@@ -15,13 +15,13 @@ API = "https://huggingface.co/api/models"
 
 
 def get_json(url):
-    req = urllib.request.Request(url, headers={"User-Agent": "murmure-ci"})
+    req = urllib.request.Request(url, headers={"User-Agent": "speech-ci"})
     with urllib.request.urlopen(req, timeout=60) as r:
         return json.load(r)
 
 
 def sha256_of_url(url):
-    req = urllib.request.Request(url, headers={"User-Agent": "murmure-ci"})
+    req = urllib.request.Request(url, headers={"User-Agent": "speech-ci"})
     h = hashlib.sha256()
     n = 0
     with urllib.request.urlopen(req, timeout=120) as r:

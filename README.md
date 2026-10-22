@@ -1,4 +1,4 @@
-# Murmure
+# Speech
 
 Dictée vocale Android 100 % locale (clone de Wispr Flow). Aucun appel réseau hors
 téléchargement initial des modèles depuis Hugging Face.

@@ -61,7 +61,7 @@ jobs:
         run: |
           if [ -n "$KEYSTORE_BASE64" ]; then
             echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
-            echo "MURMURE_KEYSTORE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+            echo "SPEECH_KEYSTORE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
             echo "Keystore de release utilisé"
           else
             echo "::warning::Secret KEYSTORE_BASE64 absent : APK signé avec la clé de dev (app/dev.keystore)"
@@ -69,21 +69,21 @@ jobs:
 
       - name: Tests unitaires + APK release
         env:
-          MURMURE_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          MURMURE_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          MURMURE_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          SPEECH_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          SPEECH_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          SPEECH_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           CMAKE_C_COMPILER_LAUNCHER: ccache
         run: ./gradlew testDebugUnitTest assembleRelease --stacktrace
 
       - name: Renommer l'APK
         run: |
           mkdir -p out
-          cp app/build/outputs/apk/release/app-release.apk "out/murmure-${GITHUB_SHA::8}.apk"
+          cp app/build/outputs/apk/release/app-release.apk "out/speech-${GITHUB_SHA::8}.apk"
           ls -la out
 
       - uses: actions/upload-artifact@v7
         with:
-          name: murmure-apk-${{ github.sha }}
+          name: speech-apk-${{ github.sha }}
           path: out/*.apk
           if-no-files-found: error
 
