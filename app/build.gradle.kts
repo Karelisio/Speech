@@ -50,8 +50,10 @@ android {
         applicationId = "com.karelisio.speech"
         minSdk = 29
         targetSdk = 37
-        versionCode = 1
-        versionName = "0.1.0"
+        // Numéro de run CI : chaque APK publié remplace le précédent sans désinstallation.
+        val build = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
+        versionCode = build
+        versionName = "0.1.$build"
         buildConfigField("String", "GIT_SHA", "\"$gitSha\"")
 
         ndk {

@@ -1,19 +1,19 @@
 package com.karelisio.speech.ui
 
-import android.Manifest
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
@@ -21,11 +21,14 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import com.karelisio.speech.SpeechApp
 import com.karelisio.speech.ui.theme.SpeechTheme
+import com.karelisio.speech.util.AppPermissions
 
 private data class Tab(val title: String, val icon: ImageVector)
 
@@ -37,18 +40,29 @@ private val TABS = listOf(
 )
 
 class MainActivity : ComponentActivity() {
-    private val notifPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
-
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        if (android.os.Build.VERSION.SDK_INT >= 33) notifPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        val prefs = (application as SpeechApp).prefs
         setContent {
             SpeechTheme {
                 var tab by rememberSaveable { mutableIntStateOf(0) }
-                Scaffold(
-                    topBar = { TopAppBar(title = { Text("Speech — ${TABS[tab].title}") }) },
+                // Assistant d'autorisations au lancement tant qu'il manque quelque chose.
+                var showPermissions by rememberSaveable { mutableStateOf(!AppPermissions.allGranted(this, prefs)) }
+                if (showPermissions) Scaffold(topBar = { TopAppBar(title = { Text("Speech — Autorisations") }) }) { padding ->
+                    PermissionsScreen(Modifier.padding(padding), onDone = { showPermissions = false })
+                } else Scaffold(
+                    topBar = {
+                        TopAppBar(
+                            title = { Text("Speech — ${TABS[tab].title}") },
+                            actions = {
+                                IconButton(onClick = { showPermissions = true }) {
+                                    Icon(Icons.Filled.Lock, contentDescription = "Autorisations")
+                                }
+                            },
+                        )
+                    },
                     bottomBar = {
                         NavigationBar {
                             TABS.forEachIndexed { i, t ->

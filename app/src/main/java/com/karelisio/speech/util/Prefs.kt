@@ -24,5 +24,13 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("whisper_dyn_ctx", false)
         set(v) = sp.edit { putBoolean("whisper_dyn_ctx", v) }
 
+    /** Réglages MagicOS (lancement auto, arrière-plan) confirmés par l'utilisateur. */
+    var magicOsConfirmed: Boolean
+        get() = sp.getBoolean("magicos_ok", false)
+        set(v) = sp.edit { putBoolean("magicos_ok", v) }
+
+    fun wasAsked(permission: String) = sp.getBoolean("asked_$permission", false)
+    fun markAsked(permission: String) = sp.edit { putBoolean("asked_$permission", true) }
+
     fun effectiveThreads(): Int = threads.takeIf { it > 0 } ?: DeviceInfo.performanceCoreCount()
 }
