@@ -78,13 +78,12 @@
       "engine": "llm",
       "description": "Nettoyage du texte (hésitations, ponctuation, auto-corrections). Q4_0 : poids réarrangés pour les instructions i8mm.",
       "repo": "Qwen/Qwen2.5-1.5B-Instruct-GGUF",
-      "revision": "main",
-      "pending": true,
+      "revision": "91cad51170dc346986eccefdc2dd33a9da36ead9",
       "files": [
         {
           "path": "qwen2.5-1.5b-instruct-q4_0.gguf",
-          "size": 0,
-          "sha256": null
+          "size": 1066227232,
+          "sha256": "dcd819ff094852c38faba6873d8ff0c9d51eadb2844539e52042ae5d647bbfdb"
         }
       ],
       "tags": [
@@ -98,13 +97,12 @@
       "engine": "llm",
       "description": "Nettoyage plus soigné, environ deux fois plus lent que le 1.5B.",
       "repo": "Qwen/Qwen2.5-3B-Instruct-GGUF",
-      "revision": "main",
-      "pending": true,
+      "revision": "7dabda4d13d513e3e842b20f0d435c732f172cbe",
       "files": [
         {
           "path": "qwen2.5-3b-instruct-q4_0.gguf",
-          "size": 0,
-          "sha256": null
+          "size": 1997879712,
+          "sha256": "670d82d0fbee6289b661eb323612c65bd2e97ec8c65cdbd9131aa44d30e9816a"
         }
       ],
       "tags": [
