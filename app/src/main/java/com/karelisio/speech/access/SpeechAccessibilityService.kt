@@ -177,29 +177,92 @@ class SpeechAccessibilityService : AccessibilityService(), BubbleController.List
     // --- Insertion ---
 
     override suspend fun insert(text: String): InsertOutcome {
-        val node = findInputNode() ?: lastEditable?.takeIf { it.refresh() && it.isTextInput() }
-        if (node == null) {
+        val candidates = inputCandidates()
+        if (candidates.isEmpty()) {
             copyToClipboard(text)
             AppLog.w(TAG, "insertion : aucun champ trouvé (app ${focusedPackage})")
             Toast.makeText(this, "Aucun champ actif : texte copié", Toast.LENGTH_SHORT).show()
             return InsertOutcome.CLIPBOARD_ONLY
         }
-        val pkg = node.packageName
+        // Essaie chaque candidat (le champ en focus d'abord) : certaines apps recréent la vue
+        // du champ, l'ancienne référence refuse alors toutes les actions.
+        for ((i, c) in candidates.withIndex()) {
+            val (node, origin) = c
+            if (trySetText(node, text, "${i + 1}/${candidates.size} $origin")) return InsertOutcome.SET_TEXT
+        }
+        // Dernière chance : un tap sur le champ lui redonne le focus, puis nouvel essai.
+        val (first, origin) = candidates.first()
+        if (first.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+            delay(150)
+            first.refresh()
+            if (trySetText(first, text, "après clic, $origin")) return InsertOutcome.SET_TEXT
+        }
+        val before = currentText(first)
+        val merged = TextMerge.merge(before, first.textSelectionStart, first.textSelectionEnd, text)
+        AppLog.w(TAG, "→ SET_TEXT refusé partout, repli PASTE")
+        return paste(first, merged, before, text, first.packageName)
+    }
+
+    private suspend fun trySetText(node: AccessibilityNodeInfo, text: String, origin: String): Boolean {
+        val fresh = node.refresh()
         val before = currentText(node)
         val merged = TextMerge.merge(before, node.textSelectionStart, node.textSelectionEnd, text)
-        AppLog.i(TAG, "insertion dans $pkg : ${node.describe()}, sel=${node.textSelectionStart}..${node.textSelectionEnd}, ${before.length} car.")
-
+        AppLog.i(
+            TAG,
+            "insertion [$origin] ${node.packageName} : ${node.describe()}, focus=${node.isFocused}, " +
+                "visible=${node.isVisibleToUser}, refresh=$fresh, fenêtre=${node.windowId}, " +
+                "sel=${node.textSelectionStart}..${node.textSelectionEnd}, ${before.length} car.",
+        )
         val args = Bundle().apply {
             putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, merged.text)
         }
-        val setOk = node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
-        if (setOk && awaitText(node, before, text)) {
+        val ok = node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+        if (ok && awaitText(node, before, text)) {
             setCursor(node, merged.cursor)
             AppLog.i(TAG, "→ SET_TEXT ok")
-            return InsertOutcome.SET_TEXT
+            return true
         }
-        AppLog.w(TAG, "→ SET_TEXT ${if (setOk) "sans effet visible" else "refusé"}, repli PASTE")
-        return paste(node, merged, before, text, pkg)
+        AppLog.w(TAG, "→ SET_TEXT ${if (ok) "sans effet visible" else "refusé"}")
+        return false
+    }
+
+    /**
+     * Champs candidats, du plus probable au moins probable : focus de saisie global, focus par
+     * fenêtre (fenêtre active d'abord), champs éditables ayant le focus, dernier champ vu.
+     */
+    private fun inputCandidates(): List<Pair<AccessibilityNodeInfo, String>> {
+        val out = mutableListOf<Pair<AccessibilityNodeInfo, String>>()
+        fun add(n: AccessibilityNodeInfo?, origin: String) {
+            if (n == null || !n.isTextInput()) return
+            if (out.none { it.first == n }) out += n to origin
+        }
+        add(runCatching { findFocus(AccessibilityNodeInfo.FOCUS_INPUT) }.getOrNull(), "focus")
+        val ws = runCatching { windows }.getOrNull().orEmpty()
+            .filter { it.type != AccessibilityWindowInfo.TYPE_INPUT_METHOD && it.type != AccessibilityWindowInfo.TYPE_ACCESSIBILITY_OVERLAY }
+            .sortedByDescending { it.isActive || it.isFocused }
+        for (w in ws) {
+            val root = runCatching { w.root }.getOrNull() ?: continue
+            add(runCatching { root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) }.getOrNull(), "fenêtre ${w.id}")
+        }
+        // Parcours complet (coûteux en IPC) seulement si aucun candidat n'a réellement le focus.
+        if (out.none { it.first.isFocused }) {
+            ws.firstOrNull()?.let { w ->
+                runCatching { w.root }.getOrNull()?.let { root ->
+                    collectEditable(root, 0) { n -> if (n.isFocused) add(n, "parcours fenêtre ${w.id}") }
+                }
+            }
+        }
+        add(lastEditable?.takeIf { it.refresh() }, "dernier vu")
+        return out.take(5)
+    }
+
+    private fun collectEditable(n: AccessibilityNodeInfo, depth: Int, onEditable: (AccessibilityNodeInfo) -> Unit) {
+        if (depth > 40) return
+        if (n.isEditable) onEditable(n)
+        for (i in 0 until n.childCount) {
+            val c = runCatching { n.getChild(i) }.getOrNull() ?: continue
+            collectEditable(c, depth + 1, onEditable)
+        }
     }
 
     /** Texte réel du champ (sans le texte d'indication affiché quand il est vide). */

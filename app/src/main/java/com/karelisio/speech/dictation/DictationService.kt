@@ -77,6 +77,7 @@ class DictationService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        intent?.action?.let { AppLog.i("Service", "action notification : $it") }
         when (intent?.action) {
             ACTION_PAUSE -> app.bubble.paused.value = true
             ACTION_RESUME -> app.bubble.paused.value = false
@@ -131,6 +132,14 @@ fun syncDictationService(context: Context) {
     when {
         wanted && !DictationService.isRunning -> runCatching { DictationService.start(context) }
             .onFailure { AppLog.e("Service", "démarrage du service micro refusé", it) }
-        !wanted && DictationService.isRunning -> DictationService.stop(context)
+        !wanted && DictationService.isRunning -> {
+            val why = when {
+                !app.bubble.enabled.value -> "bulle désactivée"
+                !micOk -> "micro non autorisé"
+                else -> "accessibilité désactivée"
+            }
+            AppLog.i("Service", "arrêt demandé : $why")
+            DictationService.stop(context)
+        }
     }
 }
