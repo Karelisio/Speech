@@ -10,6 +10,10 @@ import com.karelisio.speech.stt.SttEngine
 import com.karelisio.speech.stt.SttRequest
 import com.karelisio.speech.util.AppLog
 import com.karelisio.speech.util.MemInfo
+import com.karelisio.speech.vad.Transcriber
+import com.karelisio.speech.vad.Transcription
+import com.karelisio.speech.vad.VadMode
+import com.karelisio.speech.vad.VadProcessor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -22,10 +26,15 @@ import java.util.concurrent.atomic.AtomicLong
 data class ClipResult(
     val clipId: String,
     val durationMs: Long,
+    /** Latence après le stop, par répétition (bloc : tout ; segments : dernier segment + VAD). */
     val runsMs: List<Long>,
     val text: String,
     val encodeMs: Float?,
     val wer: Wer.Score?,
+    /** Temps de reconnaissance total (tous segments), médiane. */
+    val totalMs: Long = 0,
+    val vadMs: Long = 0,
+    val segments: Int = 1,
 ) {
     val medianMs: Long get() = runsMs.sorted()[runsMs.size / 2]
 }
@@ -33,6 +42,7 @@ data class ClipResult(
 data class ConfigResult(
     val config: EngineConfig,
     val modelName: String,
+    val mode: VadMode = VadMode.OFF,
     val loadMs: Long = 0,
     val rssBeforeMb: Long = 0,
     val rssLoadedMb: Long = 0,
@@ -43,12 +53,17 @@ data class ConfigResult(
     val clips: List<ClipResult> = emptyList(),
     val error: String? = null,
 ) {
+    val label: String get() = config.label() + " · " + mode.short
     val totalAudioMs get() = clips.sumOf { it.durationMs }
-    val totalProcMs get() = clips.sumOf { it.medianMs }
-    val rtf: Double get() = if (totalAudioMs == 0L) 0.0 else totalProcMs.toDouble() / totalAudioMs
-    val meanLatencyMs: Long get() = if (clips.isEmpty()) 0 else totalProcMs / clips.size
-    /** Latence projetée pour une dictée de 10 s traitée en un bloc. */
-    val latency10sMs: Long get() = (rtf * 10_000).toLong()
+    /** Facteur temps réel : calcul total / durée audio. */
+    val rtf: Double get() = if (totalAudioMs == 0L) 0.0 else clips.sumOf { it.totalMs }.toDouble() / totalAudioMs
+    /** Latence moyenne après le stop. */
+    val meanLatencyMs: Long get() = if (clips.isEmpty()) 0 else clips.sumOf { it.medianMs } / clips.size
+    /** Latence après le stop projetée pour une dictée de 10 s. */
+    val latency10sMs: Long
+        get() = if (mode == VadMode.SEGMENTS) meanLatencyMs // ne dépend que du dernier segment
+        else if (totalAudioMs == 0L) 0 else clips.sumOf { it.medianMs } * 10_000 / totalAudioMs
+    val meanVadMs: Long get() = if (clips.isEmpty()) 0 else clips.sumOf { it.vadMs } / clips.size
     val wer: Wer.Score?
         get() {
             val scored = clips.mapNotNull { it.wer }
@@ -60,13 +75,17 @@ data class ConfigResult(
 data class BenchPlan(
     val configs: List<EngineConfig>,
     val clips: List<BenchClip>,
+    val modes: List<VadMode> = listOf(VadMode.OFF),
     val repetitions: Int = 1,
     val language: String = "fr",
     /** Pause entre configurations pour limiter l'effet de la chauffe. */
     val cooldownMs: Long = 2_000,
 )
 
-/** Exécute un [BenchPlan] séquentiellement ; transcription d'un bloc complet par clip. */
+/**
+ * Exécute un [BenchPlan] séquentiellement. Chaque modèle est chargé une fois puis testé dans
+ * chaque mode VAD (bloc entier, silences coupés, segments aux pauses).
+ */
 class BenchmarkRunner(
     private val context: Context,
     private val models: ModelManager,
@@ -74,11 +93,13 @@ class BenchmarkRunner(
 ) {
     suspend fun run(
         plan: BenchPlan,
+        vad: VadProcessor?,
         onProgress: (String, Float) -> Unit,
         onResult: (ConfigResult) -> Unit,
     ) = withContext(Dispatchers.Default) {
         val audio = plan.clips.associate { it.id to clipStore.samples(it) }
-        val steps = plan.configs.size * (plan.clips.size * plan.repetitions + 2)
+        val modes = plan.modes.filter { it == VadMode.OFF || vad != null }.ifEmpty { listOf(VadMode.OFF) }
+        val steps = plan.configs.size * (modes.size * plan.clips.size * plan.repetitions + 2)
         var step = 0
         fun tick(msg: String) = onProgress(msg, step++.toFloat() / steps)
 
@@ -99,7 +120,7 @@ class BenchmarkRunner(
                 }
             }
             var engine: SttEngine? = null
-            val result = try {
+            val results = try {
                 tick("Chargement ${cfg.label()}")
                 val t0 = SystemClock.elapsedRealtime()
                 engine = EngineFactory.create(models, cfg)
@@ -110,35 +131,46 @@ class BenchmarkRunner(
                 tick("Préchauffage ${cfg.label()}")
                 plan.clips.firstOrNull()?.let { engine.transcribe(audio.getValue(it.id), SttRequest(plan.language)) }
 
-                val clipResults = plan.clips.map { clip ->
-                    val runs = mutableListOf<Long>()
-                    var text = ""
-                    var enc: Float? = null
-                    repeat(plan.repetitions) {
-                        ensureActive()
-                        tick("${cfg.label()} — clip ${plan.clips.indexOf(clip) + 1}/${plan.clips.size}")
-                        val r = engine.transcribe(audio.getValue(clip.id), SttRequest(plan.language))
-                        runs += r.processingMs
-                        text = r.text
-                        enc = r.encodeMs
+                modes.map { mode ->
+                    val clipResults = plan.clips.mapIndexed { ci, clip ->
+                        val runs = mutableListOf<Long>()
+                        val totals = mutableListOf<Long>()
+                        var last: Transcription? = null
+                        repeat(plan.repetitions) {
+                            ensureActive()
+                            tick("${cfg.label()} · ${mode.short} — clip ${ci + 1}/${plan.clips.size}")
+                            val r = Transcriber.run(engine, vad, audio.getValue(clip.id), mode, SttRequest(plan.language))
+                            runs += r.vadMs + r.tailMs
+                            totals += r.sttMs
+                            last = r
+                        }
+                        val r = last!!
+                        ClipResult(
+                            clipId = clip.id, durationMs = clip.durationMs, runsMs = runs, text = r.text,
+                            encodeMs = null, wer = clip.reference?.let { Wer.score(it, r.text) },
+                            totalMs = totals.sorted()[totals.size / 2], vadMs = r.vadMs, segments = r.segments,
+                        )
                     }
-                    ClipResult(clip.id, clip.durationMs, runs, text, enc, clip.reference?.let { Wer.score(it, text) })
+                    base.copy(mode = mode, loadMs = loadMs, rssLoadedMb = rssLoaded, clips = clipResults)
                 }
-                base.copy(loadMs = loadMs, rssLoadedMb = rssLoaded, clips = clipResults)
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 AppLog.e("Bench", "échec ${cfg.label()}", e)
-                base.copy(error = e.message ?: e.javaClass.simpleName)
+                listOf(base.copy(error = e.message ?: e.javaClass.simpleName))
             } finally {
                 engine?.close()
                 sampler.cancel()
             }
             System.gc()
             delay(300)
-            val final = result.copy(rssPeakMb = peak.get(), rssAfterCloseMb = MemInfo.rssMb(), thermalEnd = thermal())
-            AppLog.i("Bench", "${cfg.label()} : RTF %.3f, lat. moy. %d ms, WER %s".format(
-                final.rtf, final.meanLatencyMs, final.wer?.let { "%.1f %%".format(it.rate * 100) } ?: "—"))
-            onResult(final)
+            val rssAfter = MemInfo.rssMb()
+            val thermalEnd = thermal()
+            results.forEach { res ->
+                val final = res.copy(rssPeakMb = peak.get(), rssAfterCloseMb = rssAfter, thermalEnd = thermalEnd)
+                AppLog.i("Bench", "${final.label} : latence ${final.meanLatencyMs} ms, RTF %.3f, WER %s".format(
+                    final.rtf, final.wer?.let { "%.1f %%".format(it.rate * 100) } ?: "—"))
+                onResult(final)
+            }
         }
         onProgress("Terminé", 1f)
     }

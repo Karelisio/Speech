@@ -2,9 +2,10 @@ package com.karelisio.speech.models
 
 import org.json.JSONObject
 
-enum class EngineKind { WHISPER, PARAKEET }
+enum class EngineKind { WHISPER, PARAKEET, VAD }
 
-data class ModelFile(val path: String, val size: Long, val sha256: String?)
+/** [url] : source explicite (hors Hugging Face), sinon `huggingface.co/<repo>/resolve/<revision>/<path>`. */
+data class ModelFile(val path: String, val size: Long, val sha256: String?, val url: String? = null)
 
 data class ModelInfo(
     val id: String,
@@ -19,7 +20,8 @@ data class ModelInfo(
     /** Nom court pour les étiquettes (« Parakeet TDT 0.6B v3 »). */
     val shortName: String get() = name.substringBefore(" ·")
     val totalSize: Long get() = files.sumOf { it.size }
-    fun url(f: ModelFile) = "https://huggingface.co/$repo/resolve/$revision/${f.path}"
+    fun url(f: ModelFile) = f.url ?: "https://huggingface.co/$repo/resolve/$revision/${f.path}"
+    val isStt: Boolean get() = engine != EngineKind.VAD
 }
 
 object ModelCatalog {
@@ -42,6 +44,7 @@ object ModelCatalog {
                         path = f.getString("path"),
                         size = f.optLong("size", 0L),
                         sha256 = if (f.isNull("sha256")) null else f.getString("sha256").lowercase(),
+                        url = f.optString("url").takeIf { it.isNotEmpty() },
                     )
                 },
             )

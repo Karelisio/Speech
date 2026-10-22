@@ -20,6 +20,7 @@ import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.GraphicEq
+import androidx.compose.material.icons.rounded.Hearing
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.SdStorage
 import androidx.compose.material3.Button
@@ -87,7 +88,7 @@ fun ModelsContent(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item { StorageCard(used, freeBytes) }
-        items(models, key = { it.id }) { m ->
+        items(models.sortedBy { !it.isStt }, key = { it.id }) { m ->
             ModelCard(
                 m, status[m.id] ?: ModelStatus.Absent, active = m.id == activeId,
                 size = if (status[m.id] == ModelStatus.Ready) sizeOnDisk(m) else m.totalSize,
@@ -97,7 +98,7 @@ fun ModelsContent(
         }
         item {
             Text(
-                "Téléchargés depuis Hugging Face, une seule fois. Reprise automatique si la connexion coupe, " +
+                "Téléchargés une seule fois (Hugging Face, GitHub). Reprise automatique si la connexion coupe, " +
                     "vérification SHA-256. Ensuite tout fonctionne hors ligne.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -152,26 +153,34 @@ private fun ModelCard(
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconBadge(
-                    if (m.engine == EngineKind.PARAKEET) Icons.Rounded.Bolt else Icons.Rounded.GraphicEq,
+                    when (m.engine) {
+                        EngineKind.PARAKEET -> Icons.Rounded.Bolt
+                        EngineKind.VAD -> Icons.Rounded.Hearing
+                        EngineKind.WHISPER -> Icons.Rounded.GraphicEq
+                    },
                     container = s.primaryContainer, content = s.onPrimaryContainer, size = 48,
                 )
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
                     Text(m.shortName, style = MaterialTheme.typography.titleMedium)
                     Text(
-                        (if (m.engine == EngineKind.PARAKEET) "sherpa-onnx" else "whisper.cpp") +
-                            " · " + m.name.substringAfter("· ", "") + " · " + formatMb(size),
+                        listOfNotNull(
+                            if (m.engine == EngineKind.WHISPER) "whisper.cpp" else "sherpa-onnx",
+                            m.name.substringAfter("· ", "").ifEmpty { null },
+                            if (size < 1_000_000) "${size / 1000} Ko" else formatMb(size),
+                        ).joinToString(" · "),
                         style = MaterialTheme.typography.bodySmall,
                         color = s.onSurfaceVariant,
                     )
                 }
-                if (active && ready) Icon(Icons.Rounded.CheckCircle, "Actif", tint = s.primary)
+                if ((active || !m.isStt) && ready) Icon(Icons.Rounded.CheckCircle, "Prêt", tint = s.primary)
             }
             if (m.tags.isNotEmpty()) {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     m.tags.forEach { t ->
                         val (bg, fg) = when (t) {
                             "Recommandé" -> s.primary to s.onPrimary
+                            "Outil" -> s.secondaryContainer to s.onSecondaryContainer
                             "Rapide", "Léger" -> s.tertiaryContainer to s.onTertiaryContainer
                             "Lent sur CPU" -> s.errorContainer to s.onErrorContainer
                             else -> s.secondaryContainer to s.onSecondaryContainer
@@ -209,7 +218,9 @@ private fun ModelCard(
                         Icon(Icons.Rounded.Pause, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Pause")
                     }
                     ModelStatus.Ready -> {
-                        if (active) {
+                        if (!m.isStt) {
+                            Text("Prêt", style = MaterialTheme.typography.labelLarge, color = s.primary, modifier = Modifier.padding(start = 4.dp))
+                        } else if (active) {
                             Text("Modèle actif", style = MaterialTheme.typography.labelLarge, color = s.primary, modifier = Modifier.padding(start = 4.dp))
                         } else {
                             FilledTonalButton(onClick = onUse) { Text("Utiliser") }

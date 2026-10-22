@@ -63,7 +63,16 @@ class ModelManager(private val context: Context, private val scope: CoroutineSco
     fun find(id: String): ModelInfo? = catalog.firstOrNull { it.id == id }
     fun dir(model: ModelInfo) = File(root, model.id)
     fun isReady(id: String) = _status.value[id] == ModelStatus.Ready
-    fun readyModels() = catalog.filter { isReady(it.id) }
+    /** Modèles de reconnaissance vocale prêts (hors VAD). */
+    fun readyModels() = catalog.filter { it.isStt && isReady(it.id) }
+
+    val vadModel: ModelInfo? get() = catalog.firstOrNull { it.engine == EngineKind.VAD }
+
+    /** Le VAD (643 Ko) accompagne tout modèle de reconnaissance ; à appeler depuis le premier plan. */
+    fun ensureVad() {
+        val vad = vadModel ?: return
+        if (readyModels().isNotEmpty() && _status.value[vad.id] is ModelStatus.Absent) download(vad.id)
+    }
 
     fun sizeOnDisk(model: ModelInfo): Long =
         dir(model).listFiles()?.sumOf { it.length() } ?: 0L
@@ -82,21 +91,27 @@ class ModelManager(private val context: Context, private val scope: CoroutineSco
         val model = find(id) ?: return
         if (jobs[id]?.isActive == true || isReady(id)) return
         set(id, ModelStatus.Queued)
-        ContextCompat.startForegroundService(context, DownloadService.intent(context))
-        jobs[id] = scope.launch(Dispatchers.IO) {
-            queue.withLock {
-                try {
-                    downloadModel(model)
-                    set(id, ModelStatus.Ready)
-                    AppLog.i(TAG, "${model.id} prêt (${sizeOnDisk(model) / 1_000_000} Mo)")
-                } catch (e: CancellationException) {
-                    set(id, ModelStatus.Absent)
-                    throw e
-                } catch (e: Exception) {
-                    AppLog.e(TAG, "échec du téléchargement de ${model.id}", e)
-                    set(id, ModelStatus.Failed(e.message ?: e.javaClass.simpleName))
-                }
-            }
+        runCatching { ContextCompat.startForegroundService(context, DownloadService.intent(context)) }
+            .onFailure { AppLog.w(TAG, "service de téléchargement non démarré (arrière-plan)", it) }
+        // Le VAD suit automatiquement le premier modèle de reconnaissance.
+        if (model.isStt) vadModel?.takeIf { _status.value[it.id] is ModelStatus.Absent }?.let { vad ->
+            set(vad.id, ModelStatus.Queued)
+            jobs[vad.id] = scope.launch(Dispatchers.IO) { queue.withLock { runDownload(vad) } }
+        }
+        jobs[id] = scope.launch(Dispatchers.IO) { queue.withLock { runDownload(model) } }
+    }
+
+    private suspend fun runDownload(model: ModelInfo) {
+        try {
+            downloadModel(model)
+            set(model.id, ModelStatus.Ready)
+            AppLog.i(TAG, "${model.id} prêt (${sizeOnDisk(model) / 1_000_000} Mo)")
+        } catch (e: CancellationException) {
+            set(model.id, ModelStatus.Absent)
+            throw e
+        } catch (e: Exception) {
+            AppLog.e(TAG, "échec du téléchargement de ${model.id}", e)
+            set(model.id, ModelStatus.Failed(e.message ?: e.javaClass.simpleName))
         }
     }
 

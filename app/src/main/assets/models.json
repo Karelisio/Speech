@@ -71,6 +71,26 @@
       "tags": [
         "Léger"
       ]
+    },
+    {
+      "id": "silero-vad",
+      "name": "Silero VAD",
+      "engine": "vad",
+      "description": "Détecte la parole : retire les silences avant transcription et découpe aux pauses. Téléchargé automatiquement.",
+      "repo": "k2-fsa/sherpa-onnx",
+      "revision": "asr-models",
+      "files": [
+        {
+          "path": "silero_vad.onnx",
+          "size": 643854,
+          "sha256": "9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6",
+          "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx"
+        }
+      ],
+      "tags": [
+        "Outil",
+        "643 Ko"
+      ]
     }
   ]
 }

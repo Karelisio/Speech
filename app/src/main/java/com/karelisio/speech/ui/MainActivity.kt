@@ -59,6 +59,8 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         // Premier plan : seul moment où le service micro (bulle) peut démarrer.
         syncDictationService(this)
+        // Le VAD accompagne les modèles déjà téléchargés (premier plan : service autorisé).
+        (application as SpeechApp).models.ensureVad()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

@@ -27,6 +27,7 @@ import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.FileUpload
 import androidx.compose.material.icons.rounded.FormatQuote
+import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.Mic
@@ -84,6 +85,7 @@ import com.karelisio.speech.ui.components.SettingRow
 import com.karelisio.speech.ui.components.StatRow
 import com.karelisio.speech.ui.components.SwitchRow
 import com.karelisio.speech.ui.theme.RecordRed
+import com.karelisio.speech.vad.VadMode
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -211,11 +213,27 @@ fun BenchmarkScreen(modifier: Modifier = Modifier, vm: BenchmarkViewModel = view
                 vm.threadChoices.forEach { t -> FilterChip(t in ui.threads, { vm.toggleThreads(t) }, label = { Text("$t") }) }
             }
             GroupDivider()
+            SettingRow(
+                Icons.Rounded.GraphicEq, "Modes VAD",
+                if (vm.vadReady) "Bloc entier, silences coupés, segments aux pauses" else "VAD non téléchargé : bloc entier seulement",
+            )
+            FlowRow(
+                Modifier.padding(start = 72.dp, end = 16.dp, bottom = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                VadMode.entries.forEach { m ->
+                    FilterChip(
+                        m in ui.modes, { vm.toggleMode(m) }, label = { Text(m.label) },
+                        enabled = m == VadMode.OFF || vm.vadReady,
+                    )
+                }
+            }
+            GroupDivider()
             SwitchRow(Icons.Rounded.Tune, "Whisper : contexte audio réduit", "Compare aussi la variante rapide", ui.compareWhisperCtx, vm::setCompareCtx)
             GroupDivider()
             SegmentedRow(Icons.Rounded.Repeat, "Répétitions par clip", "La médiane est retenue", listOf(1 to "1", 3 to "3"), ui.repetitions, vm::setRepetitions)
             GroupDivider()
-            val n = vm.plannedConfigs().size
+            val n = vm.plannedConfigs().size * (if (vm.vadReady) ui.modes.size else 1)
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 if (ui.running) {
                     LinearProgressIndicator(
@@ -307,7 +325,7 @@ private fun ResultCard(r: ConfigResult, clips: List<BenchClip>) {
     var open by remember { mutableStateOf(false) }
     GroupCard {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(r.config.label(), style = MaterialTheme.typography.titleSmall)
+            Text(r.label, style = MaterialTheme.typography.titleSmall)
             if (r.error != null) {
                 Text("Erreur : ${r.error}", color = s.error, style = MaterialTheme.typography.bodySmall)
                 return@Column
@@ -318,8 +336,8 @@ private fun ResultCard(r: ConfigResult, clips: List<BenchClip>) {
                 "erreurs" to (r.wer?.let { "%.1f %%".format(it.rate * 100) } ?: "—"),
             )
             Text(
-                "RTF %.3f · chargement %d ms · RAM modèle %d Mo · pic %d Mo".format(
-                    r.rtf, r.loadMs, r.rssLoadedMb - r.rssBeforeMb, r.rssPeakMb,
+                "RTF %.3f · VAD %d ms · chargement %d ms · RAM modèle %d Mo · pic %d Mo".format(
+                    r.rtf, r.meanVadMs, r.loadMs, r.rssLoadedMb - r.rssBeforeMb, r.rssPeakMb,
                 ),
                 style = MaterialTheme.typography.bodySmall, color = s.onSurfaceVariant,
             )

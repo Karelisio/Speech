@@ -11,7 +11,10 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
 import android.view.WindowManager
+import android.view.animation.AccelerateInterpolator
+import android.view.animation.AnticipateInterpolator
 import android.view.animation.DecelerateInterpolator
+import android.view.animation.OvershootInterpolator
 import com.karelisio.speech.dictation.DictationController.State
 import com.karelisio.speech.util.Prefs
 import kotlin.math.hypot
@@ -60,8 +63,11 @@ class BubbleController(
         y = dp(64)
     }
 
+    /** Visible pour l'utilisateur (une animation de sortie peut encore tourner). */
     var isShown = false
         private set
+    /** Vue attachée au WindowManager. */
+    private var attached = false
     private var targetShown = false
     private var snapAnim: ValueAnimator? = null
 
@@ -71,30 +77,63 @@ class BubbleController(
 
     fun show() {
         if (isShown) return
-        val (w, h) = screenSize()
-        val total = bubble.totalPx
-        lp.x = if (prefs.bubbleRight) w - total else 0
-        lp.y = (prefs.bubbleY * h).roundToInt().coerceIn(0, h - total)
-        bubble.alpha = prefs.bubbleOpacity
-        runCatching { wm.addView(bubble, lp) }.onSuccess { isShown = true }
+        isShown = true
+        bubble.animate().cancel()
+        if (!attached) {
+            val (w, h) = screenSize()
+            val total = bubble.totalPx
+            lp.x = if (prefs.bubbleRight) w - total else 0
+            lp.y = (prefs.bubbleY * h).roundToInt().coerceIn(0, h - total)
+            bubble.alpha = 0f
+            bubble.scaleX = 0.2f
+            bubble.scaleY = 0.2f
+            bubble.rotation = if (prefs.bubbleRight) 25f else -25f
+            if (runCatching { wm.addView(bubble, lp) }.isFailure) {
+                isShown = false
+                return
+            }
+            attached = true
+        }
+        // Entrée : « pop » avec léger rebond et petite rotation qui se redresse.
+        bubble.animate()
+            .alpha(prefs.bubbleOpacity)
+            .scaleX(1f).scaleY(1f)
+            .rotation(0f)
+            .setDuration(340)
+            .setInterpolator(OvershootInterpolator(2.2f))
+            .withEndAction(null)
+            .start()
     }
 
     fun hide() {
         hideTarget()
         if (!isShown) return
-        snapAnim?.cancel()
-        runCatching { wm.removeView(bubble) }
         isShown = false
+        snapAnim?.cancel()
+        bubble.animate().cancel()
+        // Sortie : la bulle se contracte et s'efface, puis la fenêtre est retirée.
+        bubble.animate()
+            .alpha(0f)
+            .scaleX(0.2f).scaleY(0.2f)
+            .setDuration(200)
+            .setInterpolator(AnticipateInterpolator(1.2f))
+            .withEndAction {
+                if (!isShown && attached) {
+                    runCatching { wm.removeView(bubble) }
+                    attached = false
+                }
+            }
+            .start()
     }
 
     fun setState(state: State) { bubble.state = state }
     fun setLevel(level: Float) { bubble.level = level }
 
     fun applyAppearance(sizeDp: Int, opacity: Float) {
-        bubble.alpha = opacity
+        if (isShown) bubble.alpha = opacity
         if (bubble.diameterPx != dp(sizeDp)) {
             bubble.diameterPx = dp(sizeDp)
-            if (isShown) runCatching { wm.updateViewLayout(bubble, lp) }
+            if (attached) runCatching { wm.updateViewLayout(bubble, lp) }
         }
     }
 
@@ -117,14 +156,26 @@ class BubbleController(
 
     private fun showTarget() {
         if (targetShown) return
-        runCatching { wm.addView(target, targetLp) }.onSuccess { targetShown = true }
+        target.animate().cancel()
+        target.alpha = 0f
+        target.scaleX = 0.5f
+        target.scaleY = 0.5f
+        target.translationY = dp(24).toFloat()
+        if (target.parent == null && runCatching { wm.addView(target, targetLp) }.isFailure) return
+        targetShown = true
+        target.animate().alpha(1f).scaleX(1f).scaleY(1f).translationY(0f)
+            .setDuration(220).setInterpolator(OvershootInterpolator(1.5f)).withEndAction(null).start()
     }
 
     private fun hideTarget() {
         if (!targetShown) return
-        runCatching { wm.removeView(target) }
         targetShown = false
         target.active = false
+        target.animate().cancel()
+        target.animate().alpha(0f).scaleX(0.5f).scaleY(0.5f).translationY(dp(24).toFloat())
+            .setDuration(160).setInterpolator(AccelerateInterpolator())
+            .withEndAction { if (!targetShown && target.parent != null) runCatching { wm.removeView(target) } }
+            .start()
     }
 
     private fun overTarget(): Boolean {
@@ -150,7 +201,7 @@ class BubbleController(
             interpolator = DecelerateInterpolator()
             addUpdateListener {
                 lp.x = it.animatedValue as Int
-                if (isShown) runCatching { wm.updateViewLayout(bubble, lp) }
+                if (attached) runCatching { wm.updateViewLayout(bubble, lp) }
             }
             start()
         }

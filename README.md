@@ -35,6 +35,17 @@ Cible : Honor Magic7 Pro (Snapdragon 8 Elite), `arm64-v8a` uniquement, minSdk 29
   14+), notification Pause / Désactiver, modèle et `AudioRecord` préchargés. Si le process a
   été tué, la bulle relance le service via une activité relais invisible.
 
+## État — étape 3
+
+- **Modèles** : catalogue épinglé (révision, taille, SHA-256 vérifiés en CI), téléchargement
+  avec reprise, service de premier plan, suppression, taille sur disque, modèle actif.
+- **VAD Silero** (sherpa-onnx, 643 Ko) téléchargé automatiquement avec le premier modèle :
+  pauses ≥ 0,5 s, segments ≤ 20 s, marge de 250 ms autour de la parole.
+- Trois modes (Réglages → Reconnaissance, et comparés par le benchmark) :
+  bloc entier / silences coupés (défaut, rien n'est inséré si aucune parole) /
+  segments aux pauses (latence = dernier segment : simulation de l'étape 5).
+- Bulle : apparition « pop » avec rebond, disparition en fondu contracté.
+
 ## Moteur par défaut (benchmark étape 1, Magic7 Pro)
 
 | Config | 10 s d'audio → texte | WER |

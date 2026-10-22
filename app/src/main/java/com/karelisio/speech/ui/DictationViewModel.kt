@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import com.karelisio.speech.SpeechApp
 import com.karelisio.speech.stt.EngineConfig
 import com.karelisio.speech.stt.SttRequest
+import com.karelisio.speech.vad.Transcriber
 import com.karelisio.speech.util.AppLog
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -70,7 +71,7 @@ class DictationViewModel(application: Application) : AndroidViewModel(applicatio
         }
         viewModelScope.launch {
             runCatching {
-                app.engines.use(cfg) { it.transcribe(audio, SttRequest(app.prefs.language)) }
+                app.engines.use(cfg) { Transcriber.run(it, app.vad(), audio, app.prefs.vadMode, SttRequest(app.prefs.language)) }
             }.onSuccess { r ->
                 val latency = SystemClock.elapsedRealtime() - tStop
                 AppLog.i("Dictation", "${cfg.label()} : ${audio.size / 16} ms d'audio → $latency ms après stop")

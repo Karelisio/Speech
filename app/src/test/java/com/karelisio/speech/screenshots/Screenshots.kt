@@ -88,12 +88,16 @@ class Screenshots {
             catalog[0].id to ModelStatus.Ready,
             catalog[1].id to ModelStatus.Downloading(312_000_000, 874_188_075),
             catalog[2].id to ModelStatus.Absent,
+            catalog[3].id to ModelStatus.Ready,
         ),
         activeId = catalog[0].id, freeBytes = 24_000_000_000, sizeOnDisk = { it.totalSize },
         onDownload = {}, onCancel = {}, onDelete = {}, onUse = {},
     )
 
     @Test fun models() = shot("models") { modelsContent() }
+
+    @Test @Config(qualifiers = "w411dp-h2400dp-xxhdpi")
+    fun modelsTall() = shot("models_tall") { modelsContent() }
     @Test fun modelsDark() = shot("models_dark", dark = true) { modelsContent() }
 
     @Test fun permissions() = shot("permissions") {

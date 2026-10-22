@@ -7,6 +7,7 @@ import com.karelisio.speech.audio.AudioRecorder
 import com.karelisio.speech.audio.CaptureConfig
 import com.karelisio.speech.audio.MicSource
 import com.karelisio.speech.ui.theme.ThemeMode
+import com.karelisio.speech.vad.VadMode
 
 class Prefs(context: Context) {
     private val sp: SharedPreferences = context.getSharedPreferences("speech", Context.MODE_PRIVATE)
@@ -85,6 +86,11 @@ class Prefs(context: Context) {
     var dynamicColor: Boolean
         get() = sp.getBoolean("dynamic_color", true)
         set(v) = sp.edit { putBoolean("dynamic_color", v) }
+
+    /** Mesure à confirmer au benchmark ; « silences coupés » évite d'insérer du texte quand rien n'est dit. */
+    var vadMode: VadMode
+        get() = runCatching { VadMode.valueOf(sp.getString("vad_mode", null)!!) }.getOrDefault(VadMode.TRIM)
+        set(v) = sp.edit { putString("vad_mode", v.name) }
 
     fun wasAsked(permission: String) = sp.getBoolean("asked_$permission", false)
     fun markAsked(permission: String) = sp.edit { putBoolean("asked_$permission", true) }

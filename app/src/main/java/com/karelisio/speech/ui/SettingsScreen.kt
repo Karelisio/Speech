@@ -17,6 +17,7 @@ import androidx.compose.material.icons.automirrored.rounded.Article
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.RecordVoiceOver
 import androidx.compose.material.icons.rounded.DarkMode
+import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Keyboard
 import androidx.compose.material.icons.rounded.Memory
@@ -70,6 +71,7 @@ import com.karelisio.speech.ui.theme.ThemeMode
 import com.karelisio.speech.update.UpdateState
 import com.karelisio.speech.util.AppPermissions
 import com.karelisio.speech.util.Prefs
+import com.karelisio.speech.vad.VadMode
 
 @Composable
 fun SettingsScreen(modifier: Modifier = Modifier, onOpenPermissions: () -> Unit, onOpenLog: () -> Unit = {}) {
@@ -131,6 +133,16 @@ fun SettingsScreen(modifier: Modifier = Modifier, onOpenPermissions: () -> Unit,
                 Icons.Rounded.Translate, "Langue", "Parakeet détecte la langue tout seul",
                 listOf("fr" to "Français", "auto" to "Auto", "en" to "Anglais"), prefs.language,
             ) { prefs.language = it; changed() }
+            GroupDivider()
+            SegmentedRow(
+                Icons.Rounded.GraphicEq, "Détection de la parole",
+                when (prefs.vadMode) {
+                    VadMode.OFF -> "Tout l'audio est transcrit"
+                    VadMode.TRIM -> "Silences coupés avant et après la parole"
+                    VadMode.SEGMENTS -> "Découpe aux pauses, chaque morceau transcrit à part"
+                },
+                listOf(VadMode.OFF to "Aucune", VadMode.TRIM to "Silences", VadMode.SEGMENTS to "Pauses"), prefs.vadMode,
+            ) { prefs.vadMode = it; changed() }
             GroupDivider()
             SwitchRow(Icons.Rounded.Tune, "Contexte audio réduit", "Whisper uniquement : plus rapide, moins fiable", prefs.whisperDynamicAudioCtx) {
                 prefs.whisperDynamicAudioCtx = it; changed()

@@ -12,12 +12,17 @@ class CatalogTest {
     @Test fun bundledCatalogParses() {
         val models = ModelCatalog.parse(File("src/main/assets/models.json").readText())
         assertTrue(models.any { it.engine == EngineKind.PARAKEET })
+        assertEquals(1, models.count { it.engine == EngineKind.VAD })
         assertTrue(models.count { it.engine == EngineKind.WHISPER } >= 2)
         assertEquals(models.size, models.map { it.id }.toSet().size)
         models.forEach { m ->
-            assertTrue("révision non épinglée : ${m.id}", m.revision.matches(Regex("[0-9a-f]{40}")))
             m.files.forEach {
-                assertTrue(m.url(it).startsWith("https://huggingface.co/"))
+                if (it.url == null) {
+                    assertTrue("révision non épinglée : ${m.id}", m.revision.matches(Regex("[0-9a-f]{40}")))
+                    assertTrue(m.url(it).startsWith("https://huggingface.co/"))
+                } else {
+                    assertTrue(m.url(it).startsWith("https://"))
+                }
                 assertTrue("taille manquante : ${it.path}", it.size > 0)
                 assertTrue("sha256 manquant : ${it.path}", it.sha256?.matches(Regex("[0-9a-f]{64}")) == true)
             }

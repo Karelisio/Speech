@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.os.SystemClock
 import com.karelisio.speech.SpeechApp
 import com.karelisio.speech.stt.SttRequest
+import com.karelisio.speech.vad.Transcriber
 import com.karelisio.speech.util.AppLog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -70,7 +71,10 @@ class DictationController(private val app: SpeechApp) {
         _state.value = State.PROCESSING
         job = scope.launch {
             try {
-                val r = app.engines.use(cfg) { it.transcribe(audio, SttRequest(app.prefs.language)) }
+                val mode = app.prefs.vadMode
+                val r = app.engines.use(cfg) {
+                    Transcriber.run(it, app.vad(), audio, mode, SttRequest(app.prefs.language))
+                }
                 val tText = SystemClock.elapsedRealtime()
                 val outcome = if (r.text.isBlank()) InsertOutcome.EMPTY
                 else sink?.insert(r.text) ?: InsertOutcome.CLIPBOARD_ONLY
@@ -78,7 +82,9 @@ class DictationController(private val app: SpeechApp) {
                 lastResult.value = r.text
                 AppLog.i(
                     TAG,
-                    "audio ${audio.size / 16} ms → texte ${tText - tStop} ms, inséré ${tInsert - tStop} ms ($outcome)",
+                    "audio ${audio.size / 16} ms → texte ${tText - tStop} ms (VAD ${r.vadMs} ms, ${mode.short}, " +
+                        "${r.segments} segment(s)), inséré ${tInsert - tStop} ms ($outcome)" +
+                        if (!r.speech) " — aucune parole détectée" else "",
                 )
             } catch (e: Exception) {
                 AppLog.e(TAG, "échec de la dictée", e)

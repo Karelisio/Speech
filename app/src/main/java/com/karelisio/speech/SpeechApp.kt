@@ -7,6 +7,7 @@ import com.karelisio.speech.dictation.DictationController
 import com.karelisio.speech.overlay.BubbleState
 import com.karelisio.speech.stt.EngineConfig
 import com.karelisio.speech.update.UpdateManager
+import com.karelisio.speech.vad.VadProcessor
 import com.karelisio.speech.models.ModelManager
 import com.karelisio.speech.stt.EngineHolder
 import com.karelisio.speech.util.AppLog
@@ -51,6 +52,19 @@ class SpeechApp : Application() {
         updates = UpdateManager(this, appScope)
         appearance.value = Appearance(prefs.themeMode, prefs.dynamicColor)
         AppLog.i("App", "démarrage\n" + DeviceInfo.summary(this))
+    }
+
+    private var vadProcessor: VadProcessor? = null
+
+    /** VAD Silero, chargé à la première utilisation (≈ 2 Mo) ; null tant que le modèle n'est pas téléchargé. */
+    @Synchronized
+    fun vad(): VadProcessor? {
+        vadProcessor?.let { return it }
+        val m = models.vadModel?.takeIf { models.isReady(it.id) } ?: return null
+        return runCatching { VadProcessor(java.io.File(models.dir(m), m.files.first().path)) }
+            .onFailure { AppLog.e("VAD", "chargement impossible", it) }
+            .getOrNull()
+            ?.also { vadProcessor = it }
     }
 
     /** Configuration du moteur de dictée : modèle actif (Parakeet par défaut) et threads. */

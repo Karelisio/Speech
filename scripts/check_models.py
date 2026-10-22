@@ -40,6 +40,17 @@ def main():
     catalog = json.load(open(args.catalog, encoding="utf-8"))
     errors, warnings = [], []
     for m in catalog["models"]:
+        if all(f.get("url") for f in m["files"]):
+            # Fichiers hors Hugging Face (ex. VAD sur une release GitHub) : téléchargés et hachés.
+            print(f"== {m['id']}  (URL directes)")
+            for f in m["files"]:
+                sha, size = sha256_of_url(f["url"])
+                print(f"   {f['path']}: {size} octets, sha256 {sha}")
+                if f.get("size") and f["size"] != size:
+                    errors.append(f"{m['id']}: taille de {f['path']} = {size}, catalogue = {f['size']}")
+                if f.get("sha256") and f["sha256"].lower() != sha:
+                    errors.append(f"{m['id']}: sha256 de {f['path']} = {sha}, catalogue = {f['sha256']}")
+            continue
         repo, rev = m["repo"], m.get("revision", "main")
         info = get_json(f"{API}/{repo}/revision/{rev}")
         commit = info["sha"]

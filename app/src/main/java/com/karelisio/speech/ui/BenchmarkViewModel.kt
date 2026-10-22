@@ -16,6 +16,7 @@ import com.karelisio.speech.models.EngineKind
 import com.karelisio.speech.stt.EngineConfig
 import com.karelisio.speech.util.AppLog
 import com.karelisio.speech.util.Prefs
+import com.karelisio.speech.vad.VadMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -28,6 +29,7 @@ data class BenchUi(
     val threads: Set<Int> = emptySet(),
     val compareWhisperCtx: Boolean = false,
     val repetitions: Int = 1,
+    val modes: Set<VadMode> = setOf(VadMode.OFF, VadMode.TRIM, VadMode.SEGMENTS),
     val running: Boolean = false,
     val progressText: String = "",
     val progress: Float = 0f,
@@ -65,6 +67,10 @@ class BenchmarkViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun setCompareCtx(v: Boolean) = _ui.update { it.copy(compareWhisperCtx = v) }
     fun setRepetitions(n: Int) = _ui.update { it.copy(repetitions = n) }
+    fun toggleMode(m: VadMode) = _ui.update {
+        it.copy(modes = if (m in it.modes && it.modes.size > 1) it.modes - m else it.modes + m)
+    }
+    val vadReady: Boolean get() = app.models.vadModel?.let { app.models.isReady(it.id) } == true
 
     fun plannedConfigs(): List<EngineConfig> {
         val s = _ui.value
@@ -85,7 +91,8 @@ class BenchmarkViewModel(application: Application) : AndroidViewModel(applicatio
             _ui.update { it.copy(message = "Sélectionne au moins un modèle téléchargé et enregistre au moins un clip.") }
             return
         }
-        val plan = BenchPlan(configs, clipList, _ui.value.repetitions, app.prefs.language)
+        val modes = VadMode.entries.filter { it in _ui.value.modes }
+        val plan = BenchPlan(configs, clipList, modes, _ui.value.repetitions, app.prefs.language)
         lastPlan = plan
         _ui.update { it.copy(running = true, results = emptyList(), message = null, progress = 0f) }
         job = viewModelScope.launch {
@@ -94,6 +101,7 @@ class BenchmarkViewModel(application: Application) : AndroidViewModel(applicatio
             try {
                 runner.run(
                     plan,
+                    app.vad(),
                     onProgress = { msg, p -> _ui.update { it.copy(progressText = msg, progress = p) } },
                     onResult = { r -> _ui.update { it.copy(results = it.results + r) } },
                 )

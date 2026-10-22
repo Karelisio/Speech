@@ -24,18 +24,21 @@ object BenchReport {
         val usedClips = clips.filter { c -> results.any { r -> r.clips.any { it.clipId == c.id } } }
         appendLine("Clips : ${usedClips.size} (${"%.1f".format(usedClips.sumOf { it.durationMs } / 1000.0)} s au total)" +
             (plan?.let { ", répétitions : ${it.repetitions}, langue : ${it.language}" } ?: ""))
-        appendLine("Mode : transcription en un bloc après le stop (latence = temps de traitement).")
+        appendLine("Capture micro : " + (usedClips.mapNotNull { it.source }.distinct().joinToString().ifEmpty { "non renseignée" }))
+        appendLine("Modes : bloc = tout l'audio ; VAD = silences coupés (VAD inclus dans la latence) ;")
+        appendLine("segments = découpe aux pauses, latence = dernier segment + VAD (transcription pendant l'enregistrement simulée).")
         appendLine()
-        appendLine("| Config | Charg. ms | Lat. moy. ms | Lat. 10 s ms | RTF | RAM modèle Mo | RAM pic Mo | Après libération Mo | WER | Therm. |")
-        appendLine("|---|---|---|---|---|---|---|---|---|---|")
+        appendLine("| Config | Charg. ms | Lat. moy. ms | Lat. 10 s ms | VAD ms | Seg. | RTF | RAM modèle Mo | RAM pic Mo | Après libération Mo | WER | Therm. |")
+        appendLine("|---|---|---|---|---|---|---|---|---|---|---|---|")
         for (r in results) {
             if (r.error != null) {
-                appendLine("| ${r.config.label()} | ERREUR : ${r.error} |||||||||")
+                appendLine("| ${r.label} | ERREUR : ${r.error} |||||||||||")
                 continue
             }
+            val seg = if (r.clips.isEmpty()) 0.0 else r.clips.sumOf { it.segments }.toDouble() / r.clips.size
             appendLine(
-                "| ${r.config.label()} | ${r.loadMs} | ${r.meanLatencyMs} | ${r.latency10sMs} | ${"%.3f".format(r.rtf)} | " +
-                    "${r.rssLoadedMb - r.rssBeforeMb} | ${r.rssPeakMb} | ${r.rssAfterCloseMb} | " +
+                "| ${r.label} | ${r.loadMs} | ${r.meanLatencyMs} | ${r.latency10sMs} | ${r.meanVadMs} | ${"%.1f".format(seg)} | " +
+                    "${"%.3f".format(r.rtf)} | ${r.rssLoadedMb - r.rssBeforeMb} | ${r.rssPeakMb} | ${r.rssAfterCloseMb} | " +
                     "${r.wer?.let { "%.1f %%".format(it.rate * 100) } ?: "—"} | " +
                     "${thermalLabel(r.thermalStart)}→${thermalLabel(r.thermalEnd)} |"
             )
@@ -51,7 +54,8 @@ object BenchReport {
                 val wer = c.wer?.let { " · WER %.0f %%".format(it.rate * 100) } ?: ""
                 val enc = c.encodeMs?.let { " · enc %.0f ms".format(it) } ?: ""
                 val runs = if (c.runsMs.size > 1) " · runs ${c.runsMs.joinToString("/")}" else ""
-                appendLine("- **${r.config.label()}** (${c.medianMs} ms$enc$runs$wer) : ${c.text}")
+                val segs = if (c.segments > 1) " · ${c.segments} seg." else ""
+                appendLine("- **${r.label}** (${c.medianMs} ms$enc$runs$segs$wer) : ${c.text}")
             }
         }
     }
