@@ -2,9 +2,9 @@ package com.karelisio.speech.access
 
 /**
  * Résultat de l'insertion d'une dictée dans le texte existant d'un champ.
- * [piece] est le texte réellement inséré (espaces compris), à partir de [start].
+ * [piece] est le texte réellement inséré (espaces compris) à la place de [start, end) du texte d'origine.
  */
-data class Merged(val text: String, val cursor: Int, val start: Int, val piece: String)
+data class Merged(val text: String, val cursor: Int, val start: Int, val end: Int, val piece: String)
 
 object TextMerge {
     private val NO_SPACE_BEFORE = setOf('.', ',', ';', ':', '!', '?', ')', ']', '}', '…', '%')
@@ -23,12 +23,12 @@ object TextMerge {
         }
         val before = existing.substring(0, s)
         val after = existing.substring(e)
-        if (text.isEmpty()) return Merged(existing, e, s, "")
+        if (text.isEmpty()) return Merged(existing, e, s, e, "")
 
         val needSpaceBefore = before.isNotEmpty() && !before.last().isWhitespace() && text.first() !in NO_SPACE_BEFORE
         val needSpaceAfter = after.isNotEmpty() && (after.first().isLetterOrDigit())
         val piece = (if (needSpaceBefore) " " else "") + text + (if (needSpaceAfter) " " else "")
         val head = before + piece
-        return Merged(head + after, head.length, s, piece)
+        return Merged(head + after, head.length, s, e, piece)
     }
 }

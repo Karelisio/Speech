@@ -14,6 +14,7 @@ import android.os.Looper
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityManager
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityWindowInfo
 import android.widget.Toast
 import com.karelisio.speech.SpeechApp
 import com.karelisio.speech.dictation.DictationController.State
@@ -51,6 +52,7 @@ class SpeechAccessibilityService : AccessibilityService(), BubbleController.List
     private lateinit var bubble: BubbleController
 
     private var editableFocused = false
+    private var keyboardShown = false
     private var focusedPackage: String? = null
     /** Bulle masquée via la zone ✕ : elle revient dans une autre app. */
     private var dismissedPackage: String? = null
@@ -89,26 +91,53 @@ class SpeechAccessibilityService : AccessibilityService(), BubbleController.List
     }
 
     private fun refreshFocus() {
-        val node = runCatching { findFocus(AccessibilityNodeInfo.FOCUS_INPUT) }.getOrNull()
-        val editable = node != null && node.isEditable && !node.isPassword
+        val node = findInputNode()
+        val editable = node != null
         val pkg = node?.packageName?.toString()
         if (editable) lastEditable = node
         if (pkg != null && pkg != focusedPackage) {
             focusedPackage = pkg
             if (pkg != dismissedPackage) dismissedPackage = null
         }
-        if (editable != editableFocused) {
+        val ime = imeVisible()
+        if (editable != editableFocused || ime != keyboardShown) {
             editableFocused = editable
-            AppLog.i(TAG, if (editable) "champ éditable : $pkg" else "plus de champ éditable")
+            keyboardShown = ime
+            AppLog.i(TAG, if (editable) "champ éditable : $pkg (${node?.describe()}), clavier ${if (ime) "ouvert" else "fermé"}" else "plus de champ éditable")
         }
         updateVisibility()
     }
 
+    /** Le clavier est-il affiché ? (la liste des fenêtres n'inclut l'IME que s'il est visible) */
+    private fun imeVisible(): Boolean =
+        runCatching { windows.any { it.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD } }.getOrDefault(true)
+
+    /** Champ de saisie en focus, toutes fenêtres confondues (dialogues, bottom sheets…). */
+    private fun findInputNode(): AccessibilityNodeInfo? {
+        runCatching { findFocus(AccessibilityNodeInfo.FOCUS_INPUT) }.getOrNull()?.let { if (it.isTextInput()) return it }
+        val all = runCatching { windows }.getOrNull().orEmpty()
+        for (w in all) {
+            if (w.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD || w.type == AccessibilityWindowInfo.TYPE_ACCESSIBILITY_OVERLAY) continue
+            val f = runCatching { w.root?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) }.getOrNull()
+            if (f != null && f.isTextInput()) return f
+        }
+        return null
+    }
+
+    private fun AccessibilityNodeInfo.isTextInput(): Boolean =
+        !isPassword && (isEditable || actionList.any { it.id == AccessibilityNodeInfo.ACTION_SET_TEXT })
+
+    private fun AccessibilityNodeInfo.describe(): String =
+        "${className?.toString()?.substringAfterLast('.')}${viewIdResourceName?.let { " #" + it.substringAfter(":id/") } ?: ""}" +
+            ", editable=$isEditable, setText=${actionList.any { it.id == AccessibilityNodeInfo.ACTION_SET_TEXT }}" +
+            ", paste=${actionList.any { it.id == AccessibilityNodeInfo.ACTION_PASTE }}"
+
     private fun updateVisibility() {
         if (!::bubble.isInitialized) return
         val busy = app.controller.state.value != State.IDLE
-        val wanted = app.bubble.enabled.value && !app.bubble.paused.value &&
-            (busy || (editableFocused && focusedPackage != dismissedPackage))
+        val fieldReady = editableFocused && focusedPackage != dismissedPackage &&
+            (keyboardShown || !app.prefs.bubbleOnlyWithKeyboard)
+        val wanted = app.bubble.enabled.value && !app.bubble.paused.value && (busy || fieldReady)
         if (wanted) bubble.show() else bubble.hide()
     }
 
@@ -148,52 +177,93 @@ class SpeechAccessibilityService : AccessibilityService(), BubbleController.List
     // --- Insertion ---
 
     override suspend fun insert(text: String): InsertOutcome {
-        val node = runCatching { findFocus(AccessibilityNodeInfo.FOCUS_INPUT) }.getOrNull()?.takeIf { it.isEditable }
-            ?: lastEditable?.takeIf { it.refresh() && it.isEditable }
+        val node = findInputNode() ?: lastEditable?.takeIf { it.refresh() && it.isTextInput() }
         if (node == null) {
             copyToClipboard(text)
+            AppLog.w(TAG, "insertion : aucun champ trouvé (app ${focusedPackage})")
             Toast.makeText(this, "Aucun champ actif : texte copié", Toast.LENGTH_SHORT).show()
             return InsertOutcome.CLIPBOARD_ONLY
         }
         val pkg = node.packageName
-        val raw = node.text?.toString() ?: ""
-        val hint = if (Build.VERSION.SDK_INT >= 26) node.hintText?.toString() else null
-        val showingHint = Build.VERSION.SDK_INT >= 26 && node.isShowingHintText
-        val existing = if (showingHint || (hint != null && raw == hint)) "" else raw
-        val merged = TextMerge.merge(existing, node.textSelectionStart, node.textSelectionEnd, text)
+        val before = currentText(node)
+        val merged = TextMerge.merge(before, node.textSelectionStart, node.textSelectionEnd, text)
+        AppLog.i(TAG, "insertion dans $pkg : ${node.describe()}, sel=${node.textSelectionStart}..${node.textSelectionEnd}, ${before.length} car.")
 
         val args = Bundle().apply {
             putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, merged.text)
         }
-        if (node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) {
-            delay(120) // certaines apps (WebView) appliquent le texte de façon asynchrone
-            node.refresh()
-            if ((node.text?.toString() ?: "").contains(text.trim())) {
-                val sel = Bundle().apply {
-                    putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, merged.cursor)
-                    putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, merged.cursor)
-                }
-                node.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, sel)
-                AppLog.i(TAG, "insertion SET_TEXT dans $pkg")
-                return InsertOutcome.SET_TEXT
-            }
+        val setOk = node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+        if (setOk && awaitText(node, before, text)) {
+            setCursor(node, merged.cursor)
+            AppLog.i(TAG, "→ SET_TEXT ok")
+            return InsertOutcome.SET_TEXT
         }
-        return paste(node, merged.piece, pkg)
+        AppLog.w(TAG, "→ SET_TEXT ${if (setOk) "sans effet visible" else "refusé"}, repli PASTE")
+        return paste(node, merged, before, text, pkg)
+    }
+
+    /** Texte réel du champ (sans le texte d'indication affiché quand il est vide). */
+    private fun currentText(node: AccessibilityNodeInfo): String {
+        val raw = node.text?.toString() ?: ""
+        val hint = if (Build.VERSION.SDK_INT >= 26) node.hintText?.toString() else null
+        val showingHint = Build.VERSION.SDK_INT >= 26 && node.isShowingHintText
+        return if (showingHint || (hint != null && raw == hint)) "" else raw
+    }
+
+    /** Attend (jusqu'à ~500 ms) que le champ reflète l'insertion : certaines apps l'appliquent en différé. */
+    private suspend fun awaitText(node: AccessibilityNodeInfo, before: String, inserted: String): Boolean {
+        val needle = inserted.trim().take(40)
+        repeat(6) {
+            delay(80)
+            node.refresh()
+            val now = node.text?.toString() ?: ""
+            if (now.contains(needle) || (now != before && now.length >= before.length + needle.length / 2)) return true
+        }
+        return false
+    }
+
+    private fun setCursor(node: AccessibilityNodeInfo, pos: Int) {
+        val sel = Bundle().apply {
+            putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, pos)
+            putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, pos)
+        }
+        node.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, sel)
     }
 
     /** Repli (WebView, champs custom) : presse-papiers + ACTION_PASTE, puis restauration. */
-    private suspend fun paste(node: AccessibilityNodeInfo, piece: String, pkg: CharSequence?): InsertOutcome {
+    private suspend fun paste(
+        node: AccessibilityNodeInfo,
+        merged: Merged,
+        before: String,
+        text: String,
+        pkg: CharSequence?,
+    ): InsertOutcome {
         val cm = getSystemService(ClipboardManager::class.java)
         // Android 10+ : lecture souvent refusée hors premier plan → restauration impossible dans ce cas.
         val previous = runCatching { cm.primaryClip }.getOrNull()
-        copyToClipboard(piece)
-        val ok = node.performAction(AccessibilityNodeInfo.ACTION_PASTE)
-        delay(400)
-        if (previous != null) runCatching { cm.setPrimaryClip(previous) }
-        AppLog.i(TAG, "insertion PASTE dans $pkg : ${if (ok) "ok" else "échec"}, presse-papiers ${if (previous != null) "restauré" else "non restaurable"}")
+        copyToClipboard(merged.piece)
+        // Le champ doit avoir le focus et le curseur au bon endroit (la sélection d'origine).
+        node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+        if (node.textSelectionStart >= 0) {
+            val sel = Bundle().apply {
+                putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, merged.start)
+                putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, merged.end)
+            }
+            node.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, sel)
+        }
+        var ok = node.performAction(AccessibilityNodeInfo.ACTION_PASTE)
         if (!ok) {
-            copyToClipboard(piece)
-            Toast.makeText(this, "Insertion impossible : texte copié", Toast.LENGTH_SHORT).show()
+            node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            delay(100)
+            ok = node.performAction(AccessibilityNodeInfo.ACTION_PASTE)
+        }
+        val visible = ok && awaitText(node, before, text)
+        delay(300)
+        if (previous != null) runCatching { cm.setPrimaryClip(previous) }
+        AppLog.i(TAG, "→ PASTE ${if (ok) "accepté" else "refusé"}, texte ${if (visible) "visible" else "non vérifié"}, presse-papiers ${if (previous != null) "restauré" else "non restaurable"} ($pkg)")
+        if (!ok) {
+            copyToClipboard(merged.piece)
+            Toast.makeText(this, "Insertion impossible dans cette app : texte copié", Toast.LENGTH_SHORT).show()
             return InsertOutcome.CLIPBOARD_ONLY
         }
         return InsertOutcome.PASTE

@@ -41,6 +41,11 @@ class Prefs(context: Context) {
         get() = sp.getFloat("bubble_opacity", 0.9f)
         set(v) = sp.edit { putFloat("bubble_opacity", v) }
 
+    /** Bulle affichée seulement quand le clavier est ouvert (un champ peut garder le focus sans clavier). */
+    var bubbleOnlyWithKeyboard: Boolean
+        get() = sp.getBoolean("bubble_only_keyboard", true)
+        set(v) = sp.edit { putBoolean("bubble_only_keyboard", v) }
+
     var haptics: Boolean
         get() = sp.getBoolean("haptics", true)
         set(v) = sp.edit { putBoolean("haptics", v) }

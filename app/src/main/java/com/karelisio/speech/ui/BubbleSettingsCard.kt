@@ -36,6 +36,7 @@ fun BubbleSettingsCard(modifier: Modifier = Modifier) {
     val opacity by app.bubble.opacity.collectAsState()
     val lastText by app.controller.lastResult.collectAsState()
     var haptics by remember { mutableStateOf(app.prefs.haptics) }
+    var onlyKeyboard by remember { mutableStateOf(app.prefs.bubbleOnlyWithKeyboard) }
     val accessOk = SpeechAccessibilityService.isEnabled(context)
 
     Card(modifier.fillMaxWidth()) {
@@ -63,6 +64,10 @@ fun BubbleSettingsCard(modifier: Modifier = Modifier) {
             Slider(size.toFloat(), { app.bubble.setSize(it.toInt()) }, valueRange = 40f..80f, steps = 7)
             Text("Opacité : ${(opacity * 100).toInt()} %", style = MaterialTheme.typography.labelMedium)
             Slider(opacity, { app.bubble.setOpacity(it) }, valueRange = 0.4f..1f)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Seulement quand le clavier est ouvert", Modifier.weight(1f))
+                Switch(onlyKeyboard, { onlyKeyboard = it; app.prefs.bubbleOnlyWithKeyboard = it })
+            }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Retour haptique", Modifier.weight(1f))
                 Switch(haptics, { haptics = it; app.prefs.haptics = it })
