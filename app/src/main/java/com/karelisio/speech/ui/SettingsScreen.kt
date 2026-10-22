@@ -15,6 +15,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Article
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.rounded.MenuBook
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.RecordVoiceOver
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.DarkMode
@@ -37,7 +39,10 @@ import androidx.compose.material.icons.rounded.Translate
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Vibration
 import androidx.compose.material.icons.rounded.Waves
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
@@ -141,10 +146,21 @@ fun SettingsScreen(modifier: Modifier = Modifier, onOpenPermissions: () -> Unit,
                 when (prefs.vadMode) {
                     VadMode.OFF -> "Tout l'audio est transcrit"
                     VadMode.TRIM -> "Silences coupés avant et après la parole"
-                    VadMode.SEGMENTS -> "Découpe aux pauses, chaque morceau transcrit à part"
+                    VadMode.SEGMENTS -> "Transcription pendant que tu parles, à chaque pause : seule la fin reste à traiter au stop"
                 },
-                listOf(VadMode.OFF to "Aucune", VadMode.TRIM to "Silences", VadMode.SEGMENTS to "Pauses"), prefs.vadMode,
+                listOf(VadMode.OFF to "Aucune", VadMode.TRIM to "Silences", VadMode.SEGMENTS to "En direct"), prefs.vadMode,
             ) { prefs.vadMode = it; changed() }
+            GroupDivider()
+            var editDict by remember { mutableStateOf(false) }
+            val dictTerms = app.dictionary.terms
+            SettingRow(
+                Icons.AutoMirrored.Rounded.MenuBook, "Dictionnaire personnel",
+                if (dictTerms.isEmpty()) "Noms propres et mots à bien orthographier" else dictTerms.joinToString(", "),
+                onClick = { editDict = true },
+            ) { Icon(Icons.Rounded.Edit, null) }
+            if (editDict) DictionaryDialog(app.prefs.dictionary, onDismiss = { editDict = false }) {
+                app.setDictionary(it); editDict = false; changed()
+            }
             GroupDivider()
             SwitchRow(Icons.Rounded.Tune, "Contexte audio réduit", "Whisper uniquement : plus rapide, moins fiable", prefs.whisperDynamicAudioCtx) {
                 prefs.whisperDynamicAudioCtx = it; changed()
@@ -181,6 +197,16 @@ fun SettingsScreen(modifier: Modifier = Modifier, onOpenPermissions: () -> Unit,
         SectionTitle("Micro")
         AudioGroup(app)
 
+        // --- Mémoire ---
+        SectionTitle("Mémoire")
+        GroupCard {
+            SegmentedRow(
+                Icons.Rounded.Memory, "Libérer la RAM",
+                "Décharge les modèles après une période sans dictée (rechargés à la suivante)",
+                listOf(0 to "Jamais", 5 to "5 min", 15 to "15 min", 60 to "1 h"), prefs.releaseAfterMin,
+            ) { prefs.releaseAfterMin = it; changed() }
+        }
+
         // --- Apparence ---
         val appearance by app.appearance.collectAsState()
         SectionTitle("Apparence")
@@ -215,6 +241,31 @@ fun SettingsScreen(modifier: Modifier = Modifier, onOpenPermissions: () -> Unit,
         }
         Spacer(Modifier.height(16.dp))
     }
+}
+
+@Composable
+private fun DictionaryDialog(initial: String, onDismiss: () -> Unit, onSave: (String) -> Unit) {
+    var text by remember { mutableStateOf(initial) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.AutoMirrored.Rounded.MenuBook, null) },
+        title = { Text("Dictionnaire personnel") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    "Un mot ou nom propre par ligne. Utilisé par Whisper, par le nettoyage IA, et pour corriger " +
+                        "les variantes proches dans toutes les transcriptions.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                OutlinedTextField(
+                    text, { text = it }, Modifier.fillMaxWidth().height(220.dp),
+                    placeholder = { Text("Jean-François\nKarelisio\nMagicOS") },
+                )
+            }
+        },
+        confirmButton = { TextButton(onClick = { onSave(text) }) { Text("Enregistrer") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Annuler") } },
+    )
 }
 
 @SuppressLint("MissingPermission")

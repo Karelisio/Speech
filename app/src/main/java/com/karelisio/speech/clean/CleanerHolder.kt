@@ -18,6 +18,10 @@ class CleanerHolder(private val models: ModelManager, private val scope: Corouti
     private var cleaner: TextCleaner? = null
     private var threads = 0
 
+    /** Dictionnaire personnel courant, inclus dans le prompt système. */
+    @Volatile
+    var terms: List<String> = emptyList()
+
     var lastLoadMs: Long = 0
         private set
 
@@ -31,7 +35,7 @@ class CleanerHolder(private val models: ModelManager, private val scope: Corouti
         check(models.isReady(modelId)) { "Modèle non téléchargé : ${info.name}" }
         val rss0 = MemInfo.rssMb()
         val t0 = SystemClock.elapsedRealtime()
-        val c = LlamaCleaner(File(models.dir(info), info.files.first().path), modelId, nThreads)
+        val c = LlamaCleaner(File(models.dir(info), info.files.first().path), modelId, nThreads, CleanPrompt.build(terms))
         c.warm()
         lastLoadMs = SystemClock.elapsedRealtime() - t0
         AppLog.i("Clean", "chargé $modelId ($nThreads t) + prompt système en $lastLoadMs ms, RSS +${MemInfo.rssMb() - rss0} Mo")
@@ -40,9 +44,12 @@ class CleanerHolder(private val models: ModelManager, private val scope: Corouti
         return c
     }
 
-    suspend fun clean(modelId: String, nThreads: Int, raw: String): CleanResult = mutex.withLock {
-        withContext(Dispatchers.Default) { obtain(modelId, nThreads).clean(raw) }
-    }
+    suspend fun clean(modelId: String, nThreads: Int, raw: String, terms: List<String> = this.terms): CleanResult =
+        mutex.withLock {
+            withContext(Dispatchers.Default) {
+                obtain(modelId, nThreads).apply { system = CleanPrompt.build(terms) }.clean(raw)
+            }
+        }
 
     /** Chargement + prompt système en tâche de fond (ex. au début de l'enregistrement). */
     fun warmUpAsync(modelId: String, nThreads: Int) {
@@ -52,6 +59,20 @@ class CleanerHolder(private val models: ModelManager, private val scope: Corouti
                 withContext(Dispatchers.Default) {
                     runCatching { obtain(modelId, nThreads) }.onFailure { AppLog.e("Clean", "préchargement impossible", it) }
                 }
+            }
+        }
+    }
+
+    /** Pré-calcul du début de la dictée ; ignoré si le modèle est occupé (jamais bloquant). */
+    fun prefillAsync(modelId: String, nThreads: Int, partial: String, terms: List<String> = this.terms) {
+        scope.launch {
+            if (!mutex.tryLock()) return@launch
+            try {
+                withContext(Dispatchers.Default) {
+                    runCatching { obtain(modelId, nThreads).apply { system = CleanPrompt.build(terms) }.prefill(partial) }
+                }
+            } finally {
+                mutex.unlock()
             }
         }
     }

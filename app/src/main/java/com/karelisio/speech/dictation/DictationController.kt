@@ -1,14 +1,10 @@
 package com.karelisio.speech.dictation
 
 import android.annotation.SuppressLint
-import android.os.SystemClock
 import com.karelisio.speech.SpeechApp
-import com.karelisio.speech.stt.SttRequest
-import com.karelisio.speech.vad.Transcriber
 import com.karelisio.speech.util.AppLog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -23,7 +19,7 @@ fun interface TextSink {
 }
 
 /**
- * Cycle d'une dictée depuis la bulle : micro → transcription → insertion.
+ * Cycle d'une dictée depuis la bulle : [DictationPipeline] puis insertion dans le champ actif.
  * Toutes les méthodes publiques s'appellent depuis le thread principal.
  */
 class DictationController(private val app: SpeechApp) {
@@ -33,23 +29,21 @@ class DictationController(private val app: SpeechApp) {
     private val _state = MutableStateFlow(State.IDLE)
     val state: StateFlow<State> = _state
     val level get() = app.recorder.level
+    private val pipeline get() = app.pipeline
 
-    private var job: Job? = null
     var sink: TextSink? = null
 
-    /** Dernier résultat, pour l'affichage dans l'app. */
+    /** Dernier texte inséré, pour l'affichage dans l'app. */
     val lastResult = MutableStateFlow<String?>(null)
+
     /** Moment où l'enregistrement a commencé (détection du double tap sur la bulle). */
-    var recordingStartedAt = 0L
-        private set
+    val recordingStartedAt get() = pipeline.recordingStartedAt
 
     @SuppressLint("MissingPermission") // l'autorisation micro est vérifiée par l'appelant
     fun start(): Boolean {
         if (_state.value != State.IDLE || app.recorder.isRecording) return false
-        // Le modèle de nettoyage et son prompt système se préparent pendant qu'on parle.
-        if (app.cleaningActive()) app.cleaners.warmUpAsync(app.cleanerModelId()!!, app.prefs.llmThreads)
-        return runCatching { app.recorder.start() }
-            .onSuccess { _state.value = State.RECORDING; recordingStartedAt = SystemClock.elapsedRealtime() }
+        return runCatching { pipeline.start() }
+            .onSuccess { _state.value = State.RECORDING }
             .onFailure { AppLog.e(TAG, "micro indisponible", it) }
             .isSuccess
     }
@@ -62,49 +56,20 @@ class DictationController(private val app: SpeechApp) {
         }
     }
 
-    /** Arrête l'enregistrement, transcrit puis insère le texte. */
+    /** Arrête l'enregistrement, transcrit, nettoie puis insère le texte. */
     fun stop() {
         if (_state.value != State.RECORDING) return
-        val tStop = SystemClock.elapsedRealtime()
-        val audio = app.recorder.stop()
-        val cfg = app.dictationConfig()
-        if (cfg == null || audio.size < MIN_SAMPLES) {
-            _state.value = State.IDLE
-            if (cfg == null) AppLog.w(TAG, "aucun modèle prêt")
-            return
-        }
         _state.value = State.PROCESSING
-        job = scope.launch {
+        scope.launch {
             try {
-                val mode = app.prefs.vadMode
-                val r = app.engines.use(cfg) {
-                    Transcriber.run(it, app.vad(), audio, mode, SttRequest(app.prefs.language))
+                val r = pipeline.stop() ?: return@launch
+                if (r.text.isBlank()) {
+                    AppLog.i(TAG, "rien à insérer")
+                    return@launch
                 }
-                val tText = SystemClock.elapsedRealtime()
-                val llm = app.cleanerModelId()
-                val cleaned = if (r.text.isNotBlank() && app.cleaning.value && llm != null) {
-                    app.cleaners.clean(llm, app.prefs.llmThreads, r.text).also {
-                        AppLog.i(
-                            TAG,
-                            "nettoyage ${it.totalMs} ms (prompt ${it.promptTokens} tok ${"%.0f".format(it.promptMs)} ms, " +
-                                "${it.reusedTokens} en cache, ${it.genTokens} générés ${"%.0f".format(it.genMs)} ms)" +
-                                (it.reason?.let { why -> " — brut conservé : $why" } ?: ""),
-                        )
-                    }.text
-                } else {
-                    r.text
-                }
-                val tClean = SystemClock.elapsedRealtime()
-                val outcome = if (cleaned.isBlank()) InsertOutcome.EMPTY
-                else sink?.insert(cleaned) ?: InsertOutcome.CLIPBOARD_ONLY
-                val tInsert = SystemClock.elapsedRealtime()
-                lastResult.value = cleaned
-                AppLog.i(
-                    TAG,
-                    "audio ${audio.size / 16} ms → texte ${tText - tStop} ms (VAD ${r.vadMs} ms, ${mode.short}, " +
-                        "${r.segments} segment(s)), nettoyé ${tClean - tStop} ms, inséré ${tInsert - tStop} ms ($outcome)" +
-                        if (!r.speech) " — aucune parole détectée" else "",
-                )
+                val outcome = sink?.insert(r.text) ?: InsertOutcome.CLIPBOARD_ONLY
+                lastResult.value = r.text
+                AppLog.i(TAG, "inséré ($outcome)")
             } catch (e: Exception) {
                 AppLog.e(TAG, "échec de la dictée", e)
             } finally {
@@ -124,7 +89,7 @@ class DictationController(private val app: SpeechApp) {
     /** Abandonne l'enregistrement en cours sans transcrire. */
     fun cancel() {
         if (_state.value == State.RECORDING) {
-            app.recorder.stop()
+            pipeline.cancel()
             _state.value = State.IDLE
             AppLog.i(TAG, "dictée annulée")
         }
@@ -132,6 +97,5 @@ class DictationController(private val app: SpeechApp) {
 
     companion object {
         private const val TAG = "Dictation"
-        private const val MIN_SAMPLES = 16_000 / 4 // < 250 ms : tap accidentel
     }
 }

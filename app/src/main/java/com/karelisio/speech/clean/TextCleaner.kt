@@ -18,7 +18,11 @@ data class CleanResult(
 /** Nettoyage d'une transcription brute. Pas thread-safe : un appel à la fois. */
 interface TextCleaner : AutoCloseable {
     val modelId: String
+    /** Prompt système courant (peut changer : le cache KV ne recalcule que la partie modifiée). */
+    var system: String
     /** Prépare le prompt système (cache KV) : à appeler dès le début de l'enregistrement. */
     fun warm()
+    /** Pré-calcule le début du texte (pendant l'enregistrement) ; l'appel final en profite. */
+    fun prefill(partial: String) {}
     fun clean(raw: String): CleanResult
 }

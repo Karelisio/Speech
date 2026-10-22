@@ -64,6 +64,7 @@ import com.karelisio.speech.ui.components.OrbState
 import com.karelisio.speech.ui.components.SectionTitle
 import com.karelisio.speech.ui.components.SettingRow
 import com.karelisio.speech.ui.components.StatRow
+import com.karelisio.speech.text.HistoryEntry
 import com.karelisio.speech.util.AppPermissions
 
 /** État affiché sur l'accueil (sans dépendance Android, pour les aperçus). */
@@ -85,6 +86,7 @@ fun HomeScreen(
     modifier: Modifier = Modifier,
     onOpenPermissions: () -> Unit,
     onOpenModels: () -> Unit,
+    onOpenHistory: () -> Unit = {},
     vm: DictationViewModel = viewModel(),
 ) {
     val context = LocalContext.current
@@ -129,6 +131,9 @@ fun HomeScreen(
         onOpenPermissions = onOpenPermissions,
         onOpenModels = onOpenModels,
         accessibilityOn = SpeechAccessibilityService.isEnabled(context),
+        recent = app.history.entries.collectAsState().value.take(3),
+        onCopyEntry = { copyText(context, "dictée", it.text) },
+        onOpenHistory = onOpenHistory,
     )
 
     if (showSave) {
@@ -164,6 +169,9 @@ fun HomeContent(
     onOpenModels: () -> Unit,
     modifier: Modifier = Modifier,
     accessibilityOn: Boolean = true,
+    recent: List<HistoryEntry> = emptyList(),
+    onCopyEntry: (HistoryEntry) -> Unit = {},
+    onOpenHistory: () -> Unit = {},
 ) {
     Column(
         modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
@@ -259,6 +267,13 @@ fun HomeContent(
                     ui.cleanNote?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
                     val audio = ui.audioMs ?: 0
                     val lat = ui.latencyMs ?: 0
+                    ui.liveSegments?.let {
+                        Text(
+                            "Transcrit en direct : $it segment(s), seule la fin restait à traiter au stop.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     if (ui.cleanMs != null) {
                         StatRow(
                             "latence totale" to "$lat ms",
@@ -285,6 +300,15 @@ fun HomeContent(
                     }
                 }
             }
+        }
+
+        // --- Historique ---
+        if (recent.isNotEmpty()) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                SectionTitle("Dernières dictées", Modifier.weight(1f))
+                TextButton(onClick = onOpenHistory) { Text("Tout voir") }
+            }
+            recent.forEach { e -> HistoryCard(e, onCopy = { onCopyEntry(e) }) }
         }
 
         // --- Gestes ---

@@ -210,8 +210,11 @@ class AudioRecorder(private val configProvider: () -> CaptureConfig = { CaptureC
         )
     }
 
-    /** Copie de l'audio capturé jusqu'ici (pour la transcription pendant l'enregistrement). */
+    /** Copie de l'audio capturé depuis [from] (pour la transcription pendant l'enregistrement). */
     fun snapshot(from: Int = 0): FloatArray = synchronized(buffer) { buffer.copyRange(from) }
+
+    /** Copie de [from, to) de l'enregistrement en cours ou du dernier (bornée à ce qui existe). */
+    fun slice(from: Int, to: Int): FloatArray = synchronized(buffer) { buffer.copyRange(from, to) }
 
     /** Libère l'AudioRecord (changement de réglage, arrêt du service). */
     fun release() {
@@ -236,5 +239,8 @@ class FloatBuffer(initial: Int = AudioRecorder.SAMPLE_RATE * 30) {
 
     fun clear() { size = 0 }
     fun toArray(): FloatArray = data.copyOf(size)
-    fun copyRange(from: Int): FloatArray = data.copyOfRange(from.coerceIn(0, size), size)
+    fun copyRange(from: Int, to: Int = size): FloatArray {
+        val a = from.coerceIn(0, size)
+        return data.copyOfRange(a, to.coerceIn(a, size))
+    }
 }

@@ -84,6 +84,19 @@ data class ConfigResult(
         }
 }
 
+/** Test d'endurance : RSS relevée au fil de N dictées avec le moteur gardé en mémoire. */
+data class EnduranceResult(
+    val label: String,
+    val iterations: Int,
+    /** (itération, RSS en Mo). */
+    val rss: List<Pair<Int, Long>>,
+    val meanMs: Long,
+    val cleaned: Boolean,
+) {
+    /** Dérive de RAM entre le 10ᵉ et le dernier point (après stabilisation des caches). */
+    val driftMb: Long get() = if (rss.size < 3) 0 else rss.last().second - rss[1].second
+}
+
 data class BenchPlan(
     val configs: List<EngineConfig>,
     val clips: List<BenchClip>,
@@ -193,6 +206,43 @@ class BenchmarkRunner(
             }
         }
         onProgress("Terminé", 1f)
+    }
+
+    /** [n] dictées d'affilée sur les clips (en boucle), moteur et nettoyeur gardés chargés. */
+    suspend fun endurance(
+        cfg: EngineConfig,
+        clips: List<BenchClip>,
+        n: Int,
+        vad: VadProcessor?,
+        mode: VadMode,
+        language: String,
+        cleaner: (suspend (String) -> CleanResult)?,
+        onProgress: (String, Float) -> Unit,
+    ): EnduranceResult = withContext(Dispatchers.Default) {
+        val audio = clips.map { clipStore.samples(it) }
+        val engine = EngineFactory.create(models, cfg)
+        val rss = ArrayList<Pair<Int, Long>>()
+        var total = 0L
+        try {
+            rss += 0 to MemInfo.rssMb()
+            for (i in 1..n) {
+                ensureActive()
+                onProgress("Endurance — dictée $i/$n", i.toFloat() / n)
+                val t0 = SystemClock.elapsedRealtime()
+                val r = Transcriber.run(engine, vad, audio[(i - 1) % audio.size], mode, SttRequest(language))
+                if (cleaner != null && r.text.isNotBlank()) cleaner(r.text)
+                total += SystemClock.elapsedRealtime() - t0
+                if (i % 10 == 0) {
+                    System.gc()
+                    rss += i to MemInfo.rssMb()
+                }
+            }
+        } finally {
+            engine.close()
+        }
+        val res = EnduranceResult("${cfg.label()} · ${mode.short}", n, rss, total / n, cleaner != null)
+        AppLog.i("Bench", "endurance ${res.label} : ${rss.joinToString { "${it.first}→${it.second} Mo" }}, dérive ${res.driftMb} Mo")
+        res
     }
 
     private fun thermal(): Int = context.getSystemService(PowerManager::class.java).currentThermalStatus

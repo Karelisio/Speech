@@ -5,8 +5,11 @@ import com.karelisio.speech.audio.AudioRecorder
 import com.karelisio.speech.bench.BenchClips
 import com.karelisio.speech.clean.CleanerHolder
 import com.karelisio.speech.dictation.DictationController
+import com.karelisio.speech.dictation.DictationPipeline
 import com.karelisio.speech.overlay.BubbleState
 import com.karelisio.speech.stt.EngineConfig
+import com.karelisio.speech.text.Dictionary
+import com.karelisio.speech.text.History
 import com.karelisio.speech.update.UpdateManager
 import com.karelisio.speech.vad.VadProcessor
 import com.karelisio.speech.models.ModelManager
@@ -43,6 +46,26 @@ class SpeechApp : Application() {
     /** Nettoyage IA activé (réglage global, bascule rapide par double tap sur la bulle). */
     val cleaning = MutableStateFlow(true)
 
+    lateinit var history: History
+        private set
+    /** Dernière activité de dictée (libération de la RAM après inactivité). */
+    @Volatile
+    var lastActivityAt: Long = android.os.SystemClock.elapsedRealtime()
+
+    /** Pipeline de dictée partagé (bulle et essai rapide). */
+    lateinit var pipeline: DictationPipeline
+        private set
+    /** Dictionnaire personnel (relu à chaque modification). */
+    @Volatile
+    var dictionary: Dictionary = Dictionary(emptyList())
+        private set
+
+    fun setDictionary(raw: String) {
+        prefs.dictionary = raw
+        dictionary = Dictionary.parse(raw)
+        cleaners.terms = dictionary.terms
+    }
+
     /** Thème choisi dans Réglages → Apparence. */
     val appearance = MutableStateFlow(Appearance(ThemeMode.SYSTEM, true))
 
@@ -54,11 +77,15 @@ class SpeechApp : Application() {
         engines = EngineHolder(models)
         clips = BenchClips(this)
         bubble = BubbleState(prefs)
-        controller = DictationController(this)
         updates = UpdateManager(this, appScope)
         appearance.value = Appearance(prefs.themeMode, prefs.dynamicColor)
         cleaners = CleanerHolder(models, appScope)
         cleaning.value = prefs.cleaningEnabled
+        history = History(this)
+        dictionary = Dictionary.parse(prefs.dictionary)
+        cleaners.terms = dictionary.terms
+        pipeline = DictationPipeline(this, appScope)
+        controller = DictationController(this)
         AppLog.i("App", "démarrage\n" + DeviceInfo.summary(this))
     }
 
@@ -74,6 +101,10 @@ class SpeechApp : Application() {
             .getOrNull()
             ?.also { vadProcessor = it }
     }
+
+    /** Fichier du VAD Silero s'il est téléchargé. */
+    fun vadModelFile(): java.io.File? =
+        models.vadModel?.takeIf { models.isReady(it.id) }?.let { java.io.File(models.dir(it), it.files.first().path) }
 
     /** Modèle de nettoyage à utiliser (choisi, sinon le premier téléchargé) ; null si aucun. */
     fun cleanerModelId(): String? =

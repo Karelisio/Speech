@@ -30,6 +30,7 @@ import androidx.compose.material.icons.rounded.FileUpload
 import androidx.compose.material.icons.rounded.FormatQuote
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.LibraryMusic
+import androidx.compose.material.icons.rounded.Loop
 import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.MoreVert
@@ -258,10 +259,23 @@ fun BenchmarkScreen(modifier: Modifier = Modifier, vm: BenchmarkViewModel = view
             }
         }
 
+        // --- Endurance ---
+        SectionTitle("Endurance")
+        GroupCard {
+            SettingRow(
+                Icons.Rounded.Loop, "100 dictées d'affilée",
+                ui.endurance?.let { e ->
+                    "RSS ${e.rss.first().second} → ${e.rss.last().second} Mo · dérive ${e.driftMb} Mo · ${e.meanMs} ms en moyenne"
+                } ?: "Vérifie l'absence de fuite mémoire (modèle actif, mode VAD des réglages, nettoyage si coché)",
+            ) {
+                FilledTonalButton(onClick = vm::runEndurance, enabled = !ui.running && clips.isNotEmpty()) { Text("Lancer") }
+            }
+        }
+
         ui.message?.let { Text(it, color = s.error, modifier = Modifier.padding(horizontal = 8.dp)) }
 
         // --- Résultats ---
-        if (ui.results.isNotEmpty()) {
+        if (ui.results.isNotEmpty() || ui.endurance != null) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 SectionTitle("3 · Résultats", Modifier.weight(1f))
                 IconButton(onClick = { copyText(context, "benchmark", vm.report()) }) { Icon(Icons.Rounded.ContentCopy, "Copier") }

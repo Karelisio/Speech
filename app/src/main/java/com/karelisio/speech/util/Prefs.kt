@@ -105,6 +105,16 @@ class Prefs(context: Context) {
         get() = sp.getInt("llm_threads", DEFAULT_THREADS)
         set(v) = sp.edit { putInt("llm_threads", v) }
 
+    /** Dictionnaire personnel, un terme par ligne. */
+    var dictionary: String
+        get() = sp.getString("dictionary", "") ?: ""
+        set(v) = sp.edit { putString("dictionary", v) }
+
+    /** Libère les modèles après N minutes sans dictée (0 = jamais). */
+    var releaseAfterMin: Int
+        get() = sp.getInt("release_after_min", 0)
+        set(v) = sp.edit { putInt("release_after_min", v) }
+
     fun wasAsked(permission: String) = sp.getBoolean("asked_$permission", false)
     fun markAsked(permission: String) = sp.edit { putBoolean("asked_$permission", true) }
 

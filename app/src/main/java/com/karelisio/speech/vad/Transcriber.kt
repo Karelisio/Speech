@@ -7,7 +7,7 @@ import com.karelisio.speech.stt.SttRequest
 enum class VadMode(val label: String, val short: String) {
     OFF("Bloc entier", "bloc"),
     TRIM("Silences coupés", "VAD"),
-    SEGMENTS("Segments aux pauses", "segments"),
+    SEGMENTS("Pauses, en direct", "segments"),
 }
 
 data class Transcription(

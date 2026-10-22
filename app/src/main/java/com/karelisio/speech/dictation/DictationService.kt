@@ -16,6 +16,9 @@ import com.karelisio.speech.R
 import com.karelisio.speech.SpeechApp
 import com.karelisio.speech.ui.MainActivity
 import com.karelisio.speech.util.AppLog
+import com.karelisio.speech.util.MemInfo
+import android.os.SystemClock
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -74,6 +77,22 @@ class DictationService : Service() {
         ) runCatching { app.recorder.prepare() }
         // Modèle chargé une fois et gardé en mémoire tant que le service tourne.
         scope.launch { app.dictationConfig()?.let { runCatching { app.engines.warmUp(it) } } }
+        // Option « libérer la RAM » : modèles déchargés après N minutes sans dictée.
+        scope.launch {
+            while (true) {
+                delay(60_000)
+                val minutes = app.prefs.releaseAfterMin
+                if (minutes <= 0 || app.recorder.isRecording) continue
+                val idle = SystemClock.elapsedRealtime() - app.lastActivityAt
+                if (idle < minutes * 60_000L) continue
+                if (app.engines.loadedConfig == null && app.cleaners.loadedModelId == null) continue
+                val before = MemInfo.rssMb()
+                app.engines.release()
+                app.cleaners.release()
+                System.gc()
+                AppLog.i("Service", "RAM libérée après $minutes min d'inactivité : $before → ${MemInfo.rssMb()} Mo")
+            }
+        }
         // Idem pour le nettoyage IA : modèle chargé et prompt système déjà en cache KV.
         if (app.cleaningActive()) app.cleaners.warmUpAsync(app.cleanerModelId()!!, app.prefs.llmThreads)
     }

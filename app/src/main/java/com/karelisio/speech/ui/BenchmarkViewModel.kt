@@ -31,6 +31,7 @@ data class BenchUi(
     val repetitions: Int = 1,
     val modes: Set<VadMode> = setOf(VadMode.OFF, VadMode.TRIM, VadMode.SEGMENTS),
     val clean: Boolean = false,
+    val endurance: com.karelisio.speech.bench.EnduranceResult? = null,
     val running: Boolean = false,
     val progressText: String = "",
     val progress: Float = 0f,
@@ -117,12 +118,41 @@ class BenchmarkViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    /** 100 dictées d'affilée avec le modèle actif (fuites mémoire). */
+    fun runEndurance() {
+        if (job?.isActive == true) return
+        val cfg = app.dictationConfig()
+        val clipList = clips.value
+        if (cfg == null || clipList.isEmpty()) {
+            _ui.update { it.copy(message = "Il faut un modèle téléchargé et au moins un clip.") }
+            return
+        }
+        _ui.update { it.copy(running = true, endurance = null, message = null, progress = 0f) }
+        job = viewModelScope.launch {
+            app.engines.release()
+            val llm = app.cleanerModelId()?.takeIf { _ui.value.clean }
+            val threads = app.prefs.llmThreads
+            try {
+                val r = runner.endurance(
+                    cfg, clipList, 100, app.vad(), app.prefs.vadMode, app.prefs.language,
+                    llm?.let { id -> { text: String -> app.cleaners.clean(id, threads, text) } },
+                ) { msg, p -> _ui.update { it.copy(progressText = msg, progress = p) } }
+                _ui.update { it.copy(endurance = r) }
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                _ui.update { it.copy(message = "Endurance : ${e.message}") }
+            } finally {
+                _ui.update { it.copy(running = false) }
+            }
+        }
+    }
+
     fun cancel() {
         job?.cancel()
         _ui.update { it.copy(running = false, progressText = "Annulé") }
     }
 
-    fun report(): String = BenchReport.build(app, lastPlan, _ui.value.results, clips.value)
+    fun report(): String = BenchReport.build(app, lastPlan, _ui.value.results, clips.value, _ui.value.endurance)
 
     @SuppressLint("MissingPermission")
     fun startRecording() {

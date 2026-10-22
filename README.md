@@ -59,6 +59,20 @@ Cible : Honor Magic7 Pro (Snapdragon 8 Elite), `arm64-v8a` uniquement, minSdk 29
   L'appui long reste « maintenir pour parler ».
 - Temps de nettoyage affiché sur l'accueil, journalisé, et mesuré au benchmark (WER avant/après).
 
+## État — étape 5 (en cours)
+
+- **Transcription en direct** (Réglages → Détection de la parole → En direct) : VAD en flux
+  pendant l'enregistrement, chaque segment transcrit dès la pause ; au stop il ne reste que
+  le dernier segment. Le nettoyage IA pré-calcule le début du texte pendant qu'on parle
+  (cache KV), l'appel final ne traite que la fin.
+- **Pipeline commun** bulle / essai rapide (`DictationPipeline`).
+- **Dictionnaire personnel** : prompt initial Whisper, prompt système du nettoyage, et
+  correction des variantes proches (casse, accents, trait d'union, distance d'édition
+  pour les termes ≥ 6 lettres) pour tous les moteurs.
+- **Historique** des 50 dernières dictées (brut + final), copie en un tap, effaçable.
+- **Mémoire** : libération des modèles après 5 / 15 / 60 min sans dictée ; test d'endurance
+  de 100 dictées (RSS relevée toutes les 10) dans le benchmark.
+
 ## Moteur par défaut (benchmark étape 1, Magic7 Pro)
 
 | Config | 10 s d'audio → texte | WER |

@@ -14,7 +14,13 @@ object BenchReport {
         else -> s.toString()
     }
 
-    fun build(context: Context, plan: BenchPlan?, results: List<ConfigResult>, clips: List<BenchClip>): String = buildString {
+    fun build(
+        context: Context,
+        plan: BenchPlan?,
+        results: List<ConfigResult>,
+        clips: List<BenchClip>,
+        endurance: EnduranceResult? = null,
+    ): String = buildString {
         appendLine("# Speech — benchmark ${SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.FRANCE).format(Date())}")
         appendLine()
         appendLine("```")
@@ -53,6 +59,12 @@ object BenchReport {
                 appendLine("| ${r.label} | ${r.meanCleanMs} | ${r.wer?.let { "%.1f %%".format(it.rate * 100) } ?: "—"} | " +
                     "${r.cleanedWer?.let { "%.1f %%".format(it.rate * 100) } ?: "—"} |")
             }
+        }
+        endurance?.let { e ->
+            appendLine()
+            appendLine("### Endurance : ${e.iterations} dictées (${e.label}${if (e.cleaned) " + nettoyage IA" else ""})")
+            appendLine("Latence moyenne ${e.meanMs} ms · RSS : " + e.rss.joinToString(" → ") { "${it.second} Mo (n=${it.first})" })
+            appendLine("Dérive après stabilisation : ${e.driftMb} Mo")
         }
         appendLine()
         appendLine("## Transcriptions")

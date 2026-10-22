@@ -52,7 +52,7 @@ enum class Tab(val title: String, val selected: ImageVector, val icon: ImageVect
 }
 
 /** Écrans plein écran ouverts par-dessus les onglets. */
-enum class Sub(val title: String) { PERMISSIONS("Autorisations"), LOG("Journal") }
+enum class Sub(val title: String) { PERMISSIONS("Autorisations"), LOG("Journal"), HISTORY("Historique") }
 
 class MainActivity : ComponentActivity() {
     override fun onResume() {
@@ -120,8 +120,12 @@ fun AppShell(tab: Tab, sub: Sub?, onTab: (Tab) -> Unit, onSub: (Sub?) -> Unit) {
             when (s) {
                 Sub.PERMISSIONS -> PermissionsScreen(m, onDone = { onSub(null) })
                 Sub.LOG -> LogScreen(m)
+                Sub.HISTORY -> HistoryScreen(m)
                 null -> when (t) {
-                    Tab.HOME -> HomeScreen(m, onOpenPermissions = { onSub(Sub.PERMISSIONS) }, onOpenModels = { onTab(Tab.MODELS) })
+                    Tab.HOME -> HomeScreen(
+                        m, onOpenPermissions = { onSub(Sub.PERMISSIONS) }, onOpenModels = { onTab(Tab.MODELS) },
+                        onOpenHistory = { onSub(Sub.HISTORY) },
+                    )
                     Tab.MODELS -> ModelsScreen(m)
                     Tab.BENCH -> BenchmarkScreen(m)
                     Tab.SETTINGS -> SettingsScreen(m, onOpenPermissions = { onSub(Sub.PERMISSIONS) }, onOpenLog = { onSub(Sub.LOG) })

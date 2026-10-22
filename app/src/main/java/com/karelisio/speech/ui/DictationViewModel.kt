@@ -2,13 +2,10 @@ package com.karelisio.speech.ui
 
 import android.annotation.SuppressLint
 import android.app.Application
-import android.os.SystemClock
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.karelisio.speech.SpeechApp
 import com.karelisio.speech.stt.EngineConfig
-import com.karelisio.speech.stt.SttRequest
-import com.karelisio.speech.vad.Transcriber
 import com.karelisio.speech.util.AppLog
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -33,6 +30,8 @@ data class DictationUi(
     /** Durée de la reconnaissance seule. */
     val sttMs: Long? = null,
     val cleanNote: String? = null,
+    /** Nombre de segments transcrits pendant l'enregistrement (null : pas en direct). */
+    val liveSegments: Int? = null,
 )
 
 class DictationViewModel(application: Application) : AndroidViewModel(application) {
@@ -61,46 +60,42 @@ class DictationViewModel(application: Application) : AndroidViewModel(applicatio
     @SuppressLint("MissingPermission") // vérifiée par l'UI avant l'appel
     fun toggle() {
         if (_ui.value.processing) return
+        val pipeline = app.pipeline
         if (!recorder.isRecording) {
-            runCatching { recorder.start() }
+            runCatching { pipeline.start() }
                 .onSuccess { _ui.update { it.copy(recording = true, error = null) } }
                 .onFailure { e -> _ui.update { it.copy(error = "Micro : ${e.message}") } }
             return
         }
-        val tStop = SystemClock.elapsedRealtime()
-        val audio = recorder.stop()
-        lastAudio = audio
         _ui.update { it.copy(recording = false, processing = true, micOpenMs = recorder.lastStartLatencyMs) }
-        val cfg = currentConfig()
-        if (cfg == null) {
+        if (currentConfig() == null) {
+            pipeline.cancel()
             _ui.update { it.copy(processing = false, error = "Aucun modèle téléchargé") }
             return
         }
         viewModelScope.launch {
-            runCatching {
-                val r = app.engines.use(cfg) { Transcriber.run(it, app.vad(), audio, app.prefs.vadMode, SttRequest(app.prefs.language)) }
-                val sttMs = SystemClock.elapsedRealtime() - tStop
-                val llm = app.cleanerModelId()
-                val c = if (r.text.isNotBlank() && app.cleaning.value && llm != null) {
-                    app.cleaners.clean(llm, app.prefs.llmThreads, r.text)
-                } else null
-                Triple(r, sttMs, c)
-            }.onSuccess { (r, sttMs, c) ->
-                val latency = SystemClock.elapsedRealtime() - tStop
-                AppLog.i("Dictation", "${cfg.label()} : ${audio.size / 16} ms d'audio → $latency ms après stop" +
-                    (c?.let { " (dont nettoyage ${it.totalMs} ms)" } ?: ""))
-                _ui.update {
-                    it.copy(
-                        processing = false, text = c?.text ?: r.text, latencyMs = latency, audioMs = audio.size / 16L,
-                        raw = r.text.takeIf { c != null && c.applied && c.text != r.text },
-                        cleanMs = c?.totalMs, sttMs = sttMs,
-                        cleanNote = c?.reason?.let { why -> "Nettoyage ignoré : $why" },
-                    )
+            runCatching { pipeline.stop() }
+                .onSuccess { r ->
+                    if (r == null) {
+                        _ui.update { it.copy(processing = false, error = "Enregistrement trop court") }
+                        return@onSuccess
+                    }
+                    lastAudio = r.audio
+                    val c = r.clean
+                    _ui.update {
+                        it.copy(
+                            processing = false, text = r.text, latencyMs = r.totalMs, audioMs = r.audioMs,
+                            raw = r.raw.takeIf { c != null && c.applied && r.text != r.raw },
+                            cleanMs = c?.totalMs, sttMs = r.sttMs,
+                            cleanNote = c?.reason?.let { why -> "Nettoyage ignoré : $why" },
+                            liveSegments = if (r.live) r.segments else null,
+                        )
+                    }
                 }
-            }.onFailure { e ->
-                AppLog.e("Dictation", "échec", e)
-                _ui.update { it.copy(processing = false, error = e.message) }
-            }
+                .onFailure { e ->
+                    AppLog.e("Dictation", "échec", e)
+                    _ui.update { it.copy(processing = false, error = e.message) }
+                }
         }
     }
 

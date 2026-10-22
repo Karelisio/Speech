@@ -213,6 +213,26 @@ Java_com_karelisio_speech_llm_LlamaNative_complete(
     return arr;
 }
 
+/**
+ * Évalue (système + début de la dictée) sans générer : appelé pendant l'enregistrement, il
+ * remplit le cache KV pour que l'appel final ne traite plus que la fin du texte.
+ */
+JNIEXPORT jboolean JNICALL
+Java_com_karelisio_speech_llm_LlamaNative_prefill(JNIEnv *env, jobject, jlong ptr, jstring jsystem, jstring juser) {
+    auto *l = reinterpret_cast<Llm *>(ptr);
+    if (!l) return JNI_FALSE;
+    l->abort.store(false);
+    std::string user = jstr(env, juser);
+    std::string prompt = format(l, jstr(env, jsystem), &user);
+    if (prompt.empty()) return JNI_FALSE;
+    std::vector<llama_token> tokens = tokenize(l, prompt, true);
+    if ((int) tokens.size() >= (int) llama_n_ctx(l->ctx) / 2) return JNI_FALSE;
+    auto t0 = Clock::now();
+    bool ok = prefill(l, tokens);
+    l->prefill_ms = ms_since(t0);
+    return ok ? JNI_TRUE : JNI_FALSE;
+}
+
 /** [tokens réutilisés, tokens évalués, tokens générés, ms prompt, ms génération] du dernier appel. */
 JNIEXPORT jdoubleArray JNICALL
 Java_com_karelisio_speech_llm_LlamaNative_lastStats(JNIEnv *env, jobject, jlong ptr) {

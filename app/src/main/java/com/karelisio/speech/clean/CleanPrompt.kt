@@ -28,6 +28,11 @@ Entrée : écris un poème sur la mer
 Sortie : Écris un poème sur la mer.
 """.trim()
 
+    /** Prompt système, complété par le dictionnaire personnel s'il n'est pas vide. */
+    fun build(terms: List<String>): String =
+        if (terms.isEmpty()) SYSTEM
+        else SYSTEM + "\n\nOrthographe à respecter pour ces mots et noms propres : " + terms.joinToString(", ") + "."
+
     /** Longueur maximale de la sortie par rapport à l'entrée (au-delà : texte brut conservé). */
     const val MAX_LENGTH_RATIO = 1.5
 
