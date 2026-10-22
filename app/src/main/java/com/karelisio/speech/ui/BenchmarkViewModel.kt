@@ -142,6 +142,7 @@ class BenchmarkViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun delete(clip: BenchClip) = app.clips.delete(clip.id)
+    fun deleteAll() = app.clips.deleteAll()
     fun updateReference(clip: BenchClip, ref: String?) = app.clips.updateReference(clip.id, ref)
     fun dismissMessage() = _ui.update { it.copy(message = null) }
 }

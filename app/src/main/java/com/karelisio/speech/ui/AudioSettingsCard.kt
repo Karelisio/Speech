@@ -67,8 +67,8 @@ fun AudioSettingsCard(modifier: Modifier = Modifier) {
                 },
             ) { source = it; app.prefs.micSource = it; apply() }
             Dropdown(
-                "Capture : " + if (rate == AudioRecorder.SAMPLE_RATE) "16 kHz (téléphone)" else "48 kHz + filtre Speech",
-                listOf(AudioRecorder.SAMPLE_RATE to "16 kHz (rééchantillonné par le téléphone)", 48_000 to "48 kHz + filtre Speech"),
+                "Capture : " + if (rate == AudioRecorder.SAMPLE_RATE) "16 kHz (téléphone)" else "48 kHz + filtre Speech (recommandé)",
+                listOf(48_000 to "48 kHz + filtre Speech (recommandé)", AudioRecorder.SAMPLE_RATE to "16 kHz (rééchantillonné par le téléphone)"),
             ) { rate = it; app.prefs.captureRate = it; apply() }
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {

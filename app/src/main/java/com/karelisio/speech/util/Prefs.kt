@@ -66,10 +66,14 @@ class Prefs(context: Context) {
         get() = runCatching { MicSource.valueOf(sp.getString("mic_source", null)!!) }.getOrDefault(MicSource.VOICE_RECOGNITION)
         set(v) = sp.edit { putString("mic_source", v.name) }
 
-    /** 16000 = rééchantillonnage par le téléphone ; 48000 = capture native + filtre de Speech. */
+    /**
+     * 16000 = rééchantillonnage par le téléphone ; 48000 = capture native + filtre de Speech.
+     * Mesure Magic7 Pro : en 16 kHz le téléphone livre ~18 % d'échantillons en trop (fragments
+     * dupliqués, son « ventilateur ») ; en 48 kHz le débit est exact. 48 kHz par défaut.
+     */
     var captureRate: Int
-        get() = sp.getInt("capture_rate", AudioRecorder.SAMPLE_RATE)
-        set(v) = sp.edit { putInt("capture_rate", v) }
+        get() = sp.getInt("capture_rate_v2", 48_000)
+        set(v) = sp.edit { putInt("capture_rate_v2", v) }
 
     fun captureConfig() = CaptureConfig(micSource, captureRate)
 

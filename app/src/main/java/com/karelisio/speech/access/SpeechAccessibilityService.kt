@@ -192,7 +192,9 @@ class SpeechAccessibilityService : AccessibilityService(), BubbleController.List
         }
         // Dernière chance : un tap sur le champ lui redonne le focus, puis nouvel essai.
         val (first, origin) = candidates.first()
-        if (first.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+        val clicked = first.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+        AppLog.i(TAG, "clic sur le champ : ${if (clicked) "ok" else "refusé"}")
+        if (clicked) {
             delay(150)
             first.refresh()
             if (trySetText(first, text, "après clic, $origin")) return InsertOutcome.SET_TEXT
@@ -231,6 +233,18 @@ class SpeechAccessibilityService : AccessibilityService(), BubbleController.List
      * fenêtre (fenêtre active d'abord), champs éditables ayant le focus, dernier champ vu.
      */
     private fun inputCandidates(): List<Pair<AccessibilityNodeInfo, String>> {
+        val first = collectCandidates()
+        if (first.isEmpty() || first.any { it.first.refresh() }) return first
+        // Toutes les références viennent du cache et ne correspondent plus à une vue réelle
+        // (refresh() échoue) : on vide le cache et on recherche le champ, y compris par son id.
+        val ids = first.mapNotNull { it.first.viewIdResourceName }.distinct()
+        val cleared = if (Build.VERSION.SDK_INT >= 33) clearCache() else false
+        AppLog.w(TAG, "références périmées (${first.size}), vidage du cache : $cleared, recherche par id $ids")
+        val again = collectCandidates(ids)
+        return again.ifEmpty { first }
+    }
+
+    private fun collectCandidates(viewIds: List<String> = emptyList()): List<Pair<AccessibilityNodeInfo, String>> {
         val out = mutableListOf<Pair<AccessibilityNodeInfo, String>>()
         fun add(n: AccessibilityNodeInfo?, origin: String) {
             if (n == null || !n.isTextInput()) return
@@ -243,6 +257,10 @@ class SpeechAccessibilityService : AccessibilityService(), BubbleController.List
         for (w in ws) {
             val root = runCatching { w.root }.getOrNull() ?: continue
             add(runCatching { root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) }.getOrNull(), "fenêtre ${w.id}")
+            for (id in viewIds) {
+                runCatching { root.findAccessibilityNodeInfosByViewId(id) }.getOrNull().orEmpty()
+                    .forEach { add(it, "id ${id.substringAfter(":id/")} fenêtre ${w.id}") }
+            }
         }
         // Parcours complet (coûteux en IPC) seulement si aucun candidat n'a réellement le focus.
         if (out.none { it.first.isFocused }) {
@@ -252,7 +270,7 @@ class SpeechAccessibilityService : AccessibilityService(), BubbleController.List
                 }
             }
         }
-        add(lastEditable?.takeIf { it.refresh() }, "dernier vu")
+        if (viewIds.isEmpty()) add(lastEditable?.takeIf { it.refresh() }, "dernier vu")
         return out.take(5)
     }
 

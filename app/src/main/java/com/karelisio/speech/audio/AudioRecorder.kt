@@ -43,12 +43,20 @@ data class CaptureReport(
     /** Écart entre le temps écoulé et l'audio reçu (> 0 = échantillons perdus). */
     val missingMs get() = (durationMs - audioMs).coerceAtLeast(0)
 
+    /**
+     * Audio reçu / temps écoulé. ~1 attendu (un peu moins : ouverture du micro).
+     * Au-delà de 1,05 le flux contient des échantillons en trop (rééchantillonnage défaillant).
+     */
+    val rateRatio: Double get() = if (durationMs <= 0) 1.0 else audioMs.toDouble() / durationMs
+    val rateSuspicious: Boolean get() = durationMs > 1000 && (rateRatio > 1.05 || rateRatio < 0.85)
+
     fun summary() = buildString {
         append(config.label)
         append(" · micro ${deviceRate} Hz")
         if (deviceName.isNotEmpty()) append(" ($deviceName)")
         append(" · effets : ").append(if (effects.isEmpty()) "aucun" else effects.joinToString())
-        append("\naudio ${audioMs} ms / ${durationMs} ms écoulés")
+        append("\naudio ${audioMs} ms / ${durationMs} ms écoulés (×%.2f)".format(rateRatio))
+        if (rateSuspicious) append(" ⚠ débit incohérent : essaie la capture 48 kHz")
         append(" · crête %.1f dBFS · RMS %.1f dBFS · saturé %.2f %%".format(peakDb, rmsDb, clippedPct))
         if (silenced) append(" · ⚠ micro coupé par le système")
     }
@@ -172,7 +180,8 @@ class AudioRecorder(private val configProvider: () -> CaptureConfig = { CaptureC
         val out = synchronized(buffer) { buffer.toArray() }
         val report = analyze(out, SystemClock.elapsedRealtime() - tStart)
         _lastReport.value = report
-        AppLog.i(TAG, "enregistrement arrêté, ouverture micro ${lastStartLatencyMs} ms\n" + report.summary())
+        val msg = "enregistrement arrêté, ouverture micro ${lastStartLatencyMs} ms\n" + report.summary()
+        if (report.rateSuspicious) AppLog.w(TAG, msg) else AppLog.i(TAG, msg)
         return out
     }
 

@@ -59,6 +59,12 @@ class BenchClips(private val context: Context) {
         save(_clips.value.filterNot { it.id == id })
     }
 
+    @Synchronized
+    fun deleteAll() {
+        _clips.value.forEach { file(it).delete() }
+        save(emptyList())
+    }
+
     private fun save(list: List<BenchClip>) {
         val arr = JSONArray()
         list.forEach {

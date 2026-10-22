@@ -98,6 +98,7 @@ fun BenchmarkScreen(modifier: Modifier = Modifier, vm: BenchmarkViewModel = view
                     } else {
                         Button(onClick = { withMic { vm.startRecording() } }, enabled = !ui.running) { Text("Enregistrer") }
                         OutlinedButton(onClick = { importer.launch(arrayOf("audio/*")) }, enabled = !ui.running) { Text("Importer WAV") }
+                        if (clips.isNotEmpty()) TextButton(onClick = vm::deleteAll, enabled = !ui.running) { Text("Tout effacer") }
                     }
                 }
                 clips.forEachIndexed { i, c ->
