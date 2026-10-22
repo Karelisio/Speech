@@ -29,6 +29,31 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("magicos_ok", false)
         set(v) = sp.edit { putBoolean("magicos_ok", v) }
 
+    var bubbleEnabled: Boolean
+        get() = sp.getBoolean("bubble_enabled", true)
+        set(v) = sp.edit { putBoolean("bubble_enabled", v) }
+
+    var bubbleSizeDp: Int
+        get() = sp.getInt("bubble_size", 56)
+        set(v) = sp.edit { putInt("bubble_size", v) }
+
+    var bubbleOpacity: Float
+        get() = sp.getFloat("bubble_opacity", 0.9f)
+        set(v) = sp.edit { putFloat("bubble_opacity", v) }
+
+    var haptics: Boolean
+        get() = sp.getBoolean("haptics", true)
+        set(v) = sp.edit { putBoolean("haptics", v) }
+
+    /** Position de la bulle : bord (true = droite) et ordonnée en fraction de la hauteur. */
+    var bubbleRight: Boolean
+        get() = sp.getBoolean("bubble_right", true)
+        set(v) = sp.edit { putBoolean("bubble_right", v) }
+
+    var bubbleY: Float
+        get() = sp.getFloat("bubble_y", 0.35f)
+        set(v) = sp.edit { putFloat("bubble_y", v) }
+
     fun wasAsked(permission: String) = sp.getBoolean("asked_$permission", false)
     fun markAsked(permission: String) = sp.edit { putBoolean("asked_$permission", true) }
 

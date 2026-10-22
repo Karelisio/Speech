@@ -132,16 +132,17 @@ fun PermissionsScreen(modifier: Modifier = Modifier, onDone: () -> Unit) {
                                 Text(if (ok) "Annuler" else "C'est fait")
                             }
                         }
+                    } else if (!ok && p == AppPermission.ACCESSIBILITY) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(onClick = { request(p) }) { Text("Ouvrir l'accessibilité") }
+                            OutlinedButton(onClick = { AppPermissions.openAppDetails(context) }) { Text("Infos de l'appli") }
+                        }
                     } else if (!ok) {
                         Button(onClick = { request(p) }) { Text("Autoriser") }
                     }
                 }
             }
         }
-        Text(
-            "L'accès à l'accessibilité (insertion du texte dans les autres apps) sera ajouté avec la bulle.",
-            style = MaterialTheme.typography.bodySmall,
-        )
         if (allOk) {
             Button(onClick = onDone, modifier = Modifier.fillMaxWidth()) { Text("Continuer") }
         } else {

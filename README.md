@@ -5,7 +5,7 @@ téléchargement initial des modèles depuis Hugging Face.
 
 Cible : Honor Magic7 Pro (Snapdragon 8 Elite), `arm64-v8a` uniquement, minSdk 29.
 
-## État — étape 1
+## Étape 1
 
 - Squelette Compose / Material 3 (couleurs dynamiques).
 - Enregistrement `AudioRecord` PCM float 16 kHz mono (`VOICE_RECOGNITION`), micro pré-initialisé.
@@ -15,6 +15,26 @@ Cible : Honor Magic7 Pro (Snapdragon 8 Elite), `arm64-v8a` uniquement, minSdk 29
 - Téléchargement des modèles avec reprise (Range) et vérification SHA-256.
 - Écran **Benchmark** : clips enregistrés sur des phrases de référence, matrice modèles × threads
   (× audio_ctx Whisper), latence, RTF, RAM, WER, état thermique, export en un tap.
+
+## État — étape 2
+
+- **Bulle** (`TYPE_ACCESSIBILITY_OVERLAY` : au-dessus du clavier, aucune autorisation de
+  superposition) : tap = démarrer/arrêter, appui long = maintenir pour parler, glisser =
+  déplacer avec aimantation au bord, glisser vers ✕ = masquer (revient dans une autre app).
+- **AccessibilityService** : détection du champ éditable en focus (hors mots de passe),
+  insertion au curseur par `ACTION_SET_TEXT` + `ACTION_SET_SELECTION`, vérifiée ; repli
+  presse-papiers + `ACTION_PASTE` avec restauration (quand Android autorise sa lecture).
+- **Service de premier plan `microphone`** démarré depuis l'app au premier plan (règle Android
+  14+), notification Pause / Désactiver, modèle et `AudioRecord` préchargés. Si le process a
+  été tué, la bulle relance le service via une activité relais invisible.
+
+## Moteur par défaut (benchmark étape 1, Magic7 Pro)
+
+| Config | 10 s d'audio → texte | WER |
+|---|---|---|
+| Parakeet TDT 0.6B v3 int8, 4 threads | 0,69 s | 9,4 % |
+| Whisper large-v3-turbo q8_0, 6 threads | 17,8 s | 9,4 % |
+| Whisper small q8_0, ctx dynamique | 0,9 s | 18 % |
 
 ## Build
 

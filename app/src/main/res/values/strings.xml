@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">Speech</string>
+    <string name="accessibility_description">Speech détecte le champ de texte actif pour afficher la bulle de dictée et y insère le texte dicté à la position du curseur. Aucun contenu n\'est enregistré ni envoyé : tout reste sur le téléphone.</string>
 </resources>

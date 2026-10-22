@@ -1,3 +1,8 @@
 <resources>
     <style name="Theme.Speech" parent="android:Theme.Material.NoActionBar" />
+
+    <style name="Theme.Speech.Transparent" parent="android:Theme.Translucent.NoTitleBar">
+        <item name="android:windowAnimationStyle">@null</item>
+        <item name="android:backgroundDimEnabled">false</item>
+    </style>
 </resources>

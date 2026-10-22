@@ -37,16 +37,7 @@ class DictationViewModel(application: Application) : AndroidViewModel(applicatio
     var lastAudio: FloatArray? = null
         private set
 
-    fun currentConfig(): EngineConfig? {
-        val id = app.prefs.activeModelId?.takeIf { app.models.isReady(it) }
-            ?: app.models.readyModels().firstOrNull()?.id
-            ?: return null
-        return EngineConfig(
-            modelId = id,
-            threads = app.prefs.effectiveThreads(),
-            whisperDynamicAudioCtx = app.prefs.whisperDynamicAudioCtx,
-        )
-    }
+    fun currentConfig(): EngineConfig? = app.dictationConfig()
 
     fun warmUp() {
         val cfg = currentConfig() ?: return

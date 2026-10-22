@@ -27,6 +27,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.karelisio.speech.SpeechApp
+import com.karelisio.speech.dictation.syncDictationService
 import com.karelisio.speech.ui.theme.SpeechTheme
 import com.karelisio.speech.util.AppPermissions
 
@@ -40,6 +41,12 @@ private val TABS = listOf(
 )
 
 class MainActivity : ComponentActivity() {
+    override fun onResume() {
+        super.onResume()
+        // Premier plan : seul moment où le service micro (bulle) peut démarrer.
+        syncDictationService(this)
+    }
+
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

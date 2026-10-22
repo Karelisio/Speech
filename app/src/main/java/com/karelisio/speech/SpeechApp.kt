@@ -3,6 +3,9 @@ package com.karelisio.speech
 import android.app.Application
 import com.karelisio.speech.audio.AudioRecorder
 import com.karelisio.speech.bench.BenchClips
+import com.karelisio.speech.dictation.DictationController
+import com.karelisio.speech.overlay.BubbleState
+import com.karelisio.speech.stt.EngineConfig
 import com.karelisio.speech.models.ModelManager
 import com.karelisio.speech.stt.EngineHolder
 import com.karelisio.speech.util.AppLog
@@ -24,6 +27,10 @@ class SpeechApp : Application() {
         private set
     /** Un seul enregistreur partagé : le micro n'est jamais ouvert deux fois. */
     val recorder = AudioRecorder()
+    lateinit var bubble: BubbleState
+        private set
+    lateinit var controller: DictationController
+        private set
 
     override fun onCreate() {
         super.onCreate()
@@ -32,6 +39,20 @@ class SpeechApp : Application() {
         models = ModelManager(this, appScope)
         engines = EngineHolder(models)
         clips = BenchClips(this)
+        bubble = BubbleState(prefs)
+        controller = DictationController(this)
         AppLog.i("App", "démarrage\n" + DeviceInfo.summary(this))
+    }
+
+    /** Configuration du moteur de dictée : modèle actif (Parakeet par défaut) et threads. */
+    fun dictationConfig(): EngineConfig? {
+        val id = prefs.activeModelId?.takeIf { models.isReady(it) }
+            ?: models.readyModels().firstOrNull()?.id
+            ?: return null
+        return EngineConfig(
+            modelId = id,
+            threads = prefs.effectiveThreads(),
+            whisperDynamicAudioCtx = prefs.whisperDynamicAudioCtx,
+        )
     }
 }
