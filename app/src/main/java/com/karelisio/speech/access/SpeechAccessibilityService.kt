@@ -37,6 +37,7 @@ import kotlinx.coroutines.launch
 class SpeechAccessibilityService : AccessibilityService(), BubbleController.Listener, TextSink {
     companion object {
         private const val TAG = "Access"
+        private const val SURROUNDING = 200
 
         fun isEnabled(context: Context): Boolean {
             val me = ComponentName(context, SpeechAccessibilityService::class.java)
@@ -177,6 +178,9 @@ class SpeechAccessibilityService : AccessibilityService(), BubbleController.List
     // --- Insertion ---
 
     override suspend fun insert(text: String): InsertOutcome {
+        // Voie principale (Android 13+) : le canal de saisie du clavier, comme une frappe.
+        // Fonctionne même quand l'app refuse les actions d'accessibilité sur ses vues.
+        if (Build.VERSION.SDK_INT >= 33 && commitViaInputConnection(text)) return InsertOutcome.INPUT_CONNECTION
         val candidates = inputCandidates()
         if (candidates.isEmpty()) {
             copyToClipboard(text)
@@ -203,6 +207,53 @@ class SpeechAccessibilityService : AccessibilityService(), BubbleController.List
         val merged = TextMerge.merge(before, first.textSelectionStart, first.textSelectionEnd, text)
         AppLog.w(TAG, "→ SET_TEXT refusé partout, repli PASTE")
         return paste(first, merged, before, text, first.packageName)
+    }
+
+    /**
+     * Insère via [android.accessibilityservice.InputMethod] (flag `flagInputMethodEditor`) :
+     * lit le texte autour du curseur pour les espaces, puis `commitText` remplace la sélection.
+     */
+    @androidx.annotation.RequiresApi(33)
+    private suspend fun commitViaInputConnection(text: String): Boolean {
+        val ic = inputMethod?.currentInputConnection
+        if (ic == null) {
+            AppLog.w(TAG, "InputConnection indisponible (aucun champ relié au clavier)")
+            return false
+        }
+        val st = runCatching { ic.getSurroundingText(SURROUNDING, SURROUNDING, 0) }.getOrNull()
+        val piece = if (st != null && st.selectionStart >= 0) {
+            TextMerge.merge(st.text.toString(), st.selectionStart, st.selectionEnd, text).piece
+        } else {
+            text.trim()
+        }
+        val pkg = inputMethod?.currentInputEditorInfo?.packageName ?: focusedPackage
+        AppLog.i(
+            TAG,
+            "insertion InputConnection dans $pkg : contexte ${st?.text?.length ?: -1} car., " +
+                "sel=${st?.selectionStart}..${st?.selectionEnd}",
+        )
+        runCatching { ic.commitText(piece, 1, null) }.onFailure {
+            AppLog.e(TAG, "→ commitText a échoué", it)
+            return false
+        }
+        // Vérification quand l'app expose son texte ; sinon on fait confiance au canal clavier
+        // (un second essai par une autre voie risquerait de dupliquer le texte).
+        val needle = piece.trim().takeLast(30)
+        var after: String? = null
+        var seen = false
+        for (i in 0 until 3) {
+            delay(80)
+            after = runCatching { ic.getSurroundingText(SURROUNDING, 0, 0) }.getOrNull()?.text?.toString()
+            seen = after?.contains(needle) == true
+            if (after == null || seen) break
+        }
+        AppLog.i(TAG, "→ commitText envoyé, ${if (after == null) "texte non lisible" else if (seen) "texte vérifié" else "texte non retrouvé"}")
+        if (after != null && !seen) {
+            // Filet de sécurité sans risque de doublon : le texte reste disponible à coller.
+            copyToClipboard(piece.trim())
+            Toast.makeText(this, "Texte envoyé (et copié par sécurité)", Toast.LENGTH_SHORT).show()
+        }
+        return true
     }
 
     private suspend fun trySetText(node: AccessibilityNodeInfo, text: String, origin: String): Boolean {

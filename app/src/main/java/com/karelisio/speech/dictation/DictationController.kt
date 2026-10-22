@@ -14,7 +14,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 /** Résultat d'une tentative d'insertion dans le champ actif. */
-enum class InsertOutcome { SET_TEXT, PASTE, CLIPBOARD_ONLY, EMPTY }
+enum class InsertOutcome { INPUT_CONNECTION, SET_TEXT, PASTE, CLIPBOARD_ONLY, EMPTY }
 
 /** Insère le texte dicté dans le champ en focus (implémenté par le service d'accessibilité). */
 fun interface TextSink {
