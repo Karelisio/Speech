@@ -21,7 +21,7 @@ jobs:
       - uses: actions/checkout@v5
       - name: Vérifier URLs, tailles et SHA-256
         run: python3 scripts/check_models.py --out models.resolved.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: models-resolved
@@ -81,13 +81,13 @@ jobs:
           cp app/build/outputs/apk/release/app-release.apk "out/murmure-${GITHUB_SHA::8}.apk"
           ls -la out
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: murmure-apk-${{ github.sha }}
           path: out/*.apk
           if-no-files-found: error
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: test-reports

@@ -14,7 +14,14 @@ class CatalogTest {
         assertTrue(models.any { it.engine == EngineKind.PARAKEET })
         assertTrue(models.count { it.engine == EngineKind.WHISPER } >= 3)
         assertEquals(models.size, models.map { it.id }.toSet().size)
-        models.forEach { m -> m.files.forEach { assertTrue(m.url(it).startsWith("https://huggingface.co/")) } }
+        models.forEach { m ->
+            assertTrue("révision non épinglée : ${m.id}", m.revision.matches(Regex("[0-9a-f]{40}")))
+            m.files.forEach {
+                assertTrue(m.url(it).startsWith("https://huggingface.co/"))
+                assertTrue("taille manquante : ${it.path}", it.size > 0)
+                assertTrue("sha256 manquant : ${it.path}", it.sha256?.matches(Regex("[0-9a-f]{64}")) == true)
+            }
+        }
     }
 
     @Test fun dynamicAudioCtx() {

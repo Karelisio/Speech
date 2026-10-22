@@ -6,12 +6,28 @@
       "engine": "parakeet",
       "description": "sherpa-onnx. 25 langues européennes dont le français. Candidat le plus rapide.",
       "repo": "csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8",
-      "revision": "main",
+      "revision": "2bda32ec70b097a55adaa07d9a7173915b43cc78",
       "files": [
-        { "path": "encoder.int8.onnx", "size": 0, "sha256": null },
-        { "path": "decoder.int8.onnx", "size": 0, "sha256": null },
-        { "path": "joiner.int8.onnx", "size": 0, "sha256": null },
-        { "path": "tokens.txt", "size": 0, "sha256": null }
+        {
+          "path": "encoder.int8.onnx",
+          "size": 652184281,
+          "sha256": "acfc2b4456377e15d04f0243af540b7fe7c992f8d898d751cf134c3a55fd2247"
+        },
+        {
+          "path": "decoder.int8.onnx",
+          "size": 11845275,
+          "sha256": "179e50c43d1a9de79c8a24149a2f9bac6eb5981823f2a2ed88d655b24248db4e"
+        },
+        {
+          "path": "joiner.int8.onnx",
+          "size": 6355277,
+          "sha256": "3164c13fc2821009440d20fcb5fdc78bff28b4db2f8d0f0b329101719c0948b3"
+        },
+        {
+          "path": "tokens.txt",
+          "size": 93939,
+          "sha256": "d58544679ea4bc6ac563d1f545eb7d474bd6cfa467f0a6e2c1dc1c7d37e3c35d"
+        }
       ]
     },
     {
@@ -20,9 +36,13 @@
       "engine": "whisper",
       "description": "whisper.cpp. Meilleure précision attendue en français.",
       "repo": "ggerganov/whisper.cpp",
-      "revision": "main",
+      "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
       "files": [
-        { "path": "ggml-large-v3-turbo-q5_0.bin", "size": 0, "sha256": null }
+        {
+          "path": "ggml-large-v3-turbo-q5_0.bin",
+          "size": 574041195,
+          "sha256": "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2"
+        }
       ]
     },
     {
@@ -31,9 +51,13 @@
       "engine": "whisper",
       "description": "whisper.cpp. Quantification plus fine que q5_0 : à comparer en vitesse et précision.",
       "repo": "ggerganov/whisper.cpp",
-      "revision": "main",
+      "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
       "files": [
-        { "path": "ggml-large-v3-turbo-q8_0.bin", "size": 0, "sha256": null }
+        {
+          "path": "ggml-large-v3-turbo-q8_0.bin",
+          "size": 874188075,
+          "sha256": "317eb69c11673c9de1e1f0d459b253999804ec71ac4c23c17ecf5fbe24e259a1"
+        }
       ]
     },
     {
@@ -42,9 +66,13 @@
       "engine": "whisper",
       "description": "whisper.cpp. Modèle léger de secours.",
       "repo": "ggerganov/whisper.cpp",
-      "revision": "main",
+      "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
       "files": [
-        { "path": "ggml-small-q8_0.bin", "size": 0, "sha256": null }
+        {
+          "path": "ggml-small-q8_0.bin",
+          "size": 264464607,
+          "sha256": "49c8fb02b65e6049d5fa6c04f81f53b867b5ec9540406812c643f177317f779f"
+        }
       ]
     }
   ]
