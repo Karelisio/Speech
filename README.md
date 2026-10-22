@@ -7,86 +7,49 @@
   <img src="docs/screenshots/settings_dark.png" width="24%">
 </p>
 
-Dictée vocale Android 100 % locale (clone de Wispr Flow). Aucun appel réseau hors
-téléchargement initial des modèles depuis Hugging Face.
+Dictée vocale Android **100 % locale** (alternative libre à Wispr Flow) : aucun appel réseau
+hors téléchargement initial des modèles. Cible : Honor Magic7 Pro (Snapdragon 8 Elite),
+`arm64-v8a`, Android 10+ (minSdk 29, targetSdk 37).
 
-Cible : Honor Magic7 Pro (Snapdragon 8 Elite), `arm64-v8a` uniquement, minSdk 29.
+**Télécharger** : [dernière version stable](https://github.com/Karelisio/Speech/releases/latest) ·
+[build de développement](https://github.com/Karelisio/Speech/releases/download/dev-latest/speech.apk)
 
-## Étape 1
+## Fonctions
 
-- Squelette Compose / Material 3 (couleurs dynamiques).
-- Enregistrement `AudioRecord` PCM float 16 kHz mono (`VOICE_RECOGNITION`), micro pré-initialisé.
-- Deux moteurs derrière `SttEngine` :
-  - **sherpa-onnx** (AAR officiel épinglé) + Parakeet TDT 0.6B v3 int8 ;
-  - **whisper.cpp** (sous-module, JNI) + large-v3-turbo q5_0 / q8_0, small q8_0 en secours.
-- Téléchargement des modèles avec reprise (Range) et vérification SHA-256.
-- Écran **Benchmark** : clips enregistrés sur des phrases de référence, matrice modèles × threads
-  (× audio_ctx Whisper), latence, RTF, RAM, WER, état thermique, export en un tap.
+| | |
+|---|---|
+| Bulle | Au-dessus du clavier dans toutes les apps. Toucher = démarrer/arrêter, appui long = maintenir pour parler, double tap = nettoyage IA on/off, glisser vers ✕ = masquer. |
+| Insertion | Au curseur, sans écraser l'existant : canal de saisie du clavier (Android 13+), sinon `ACTION_SET_TEXT` + `SET_SELECTION`, sinon presse-papiers + `PASTE`. |
+| Reconnaissance | Parakeet TDT 0.6B v3 int8 (sherpa-onnx, défaut), Whisper large-v3-turbo q8_0 / small q8_0 (whisper.cpp). |
+| VAD | Silero : silences coupés (défaut) ou transcription **en direct** à chaque pause. |
+| Nettoyage IA | Qwen 2.5 1.5B (défaut) / 3B Instruct Q4_0 via llama.cpp, CPU ou GPU OpenCL. Prompt système en cache KV, début du texte pré-calculé pendant l'enregistrement, garde-fou 1,5 × l'entrée. |
+| Dictionnaire | Prompt Whisper, prompt du nettoyage, correction des variantes proches. |
+| Historique | 50 dernières dictées, brut + final, copie en un tap. |
+| Benchmark | Modèles × threads × modes VAD × accélérateurs, latence après stop, RTF, RAM, WER avant/après IA, endurance 100 dictées, export Markdown. |
+| Système | Assistant d'autorisations (guide MagicOS), mise à jour in-app, libération de la RAM après inactivité, journal exportable. |
 
-## État — étape 2
-
-- **Bulle** (`TYPE_ACCESSIBILITY_OVERLAY` : au-dessus du clavier, aucune autorisation de
-  superposition) : tap = démarrer/arrêter, appui long = maintenir pour parler, glisser =
-  déplacer avec aimantation au bord, glisser vers ✕ = masquer (revient dans une autre app).
-- **AccessibilityService** : détection du champ éditable en focus (hors mots de passe),
-  insertion au curseur par `ACTION_SET_TEXT` + `ACTION_SET_SELECTION`, vérifiée ; repli
-  presse-papiers + `ACTION_PASTE` avec restauration (quand Android autorise sa lecture).
-- **Service de premier plan `microphone`** démarré depuis l'app au premier plan (règle Android
-  14+), notification Pause / Désactiver, modèle et `AudioRecord` préchargés. Si le process a
-  été tué, la bulle relance le service via une activité relais invisible.
-
-## État — étape 3
-
-- **Modèles** : catalogue épinglé (révision, taille, SHA-256 vérifiés en CI), téléchargement
-  avec reprise, service de premier plan, suppression, taille sur disque, modèle actif.
-- **VAD Silero** (sherpa-onnx, 643 Ko) téléchargé automatiquement avec le premier modèle :
-  pauses ≥ 0,5 s, segments ≤ 20 s, marge de 250 ms autour de la parole.
-- Trois modes (Réglages → Reconnaissance, et comparés par le benchmark) :
-  bloc entier / silences coupés (défaut, rien n'est inséré si aucune parole) /
-  segments aux pauses (latence = dernier segment : simulation de l'étape 5).
-- Bulle : apparition « pop » avec rebond, disparition en fondu contracté.
-
-## État — étape 4
-
-- **llama.cpp** (sous-module épinglé b11345) dans un module Android séparé `:llm` (son ggml
-  et celui de whisper.cpp ont les mêmes cibles CMake ; deux `.so`, symboles masqués).
-- `TextCleaner` / `LlamaCleaner` : Qwen 2.5 1.5B Instruct Q4_0 (défaut) ou 3B, génération
-  gloutonne, limite = 1,5 × tokens d'entrée + 16 ; prompt système (règles + exemples) évalué
-  une fois et gardé dans le cache KV (préfixe commun réutilisé à chaque dictée), préchargé au
-  démarrage du service et au début de chaque enregistrement.
-- Garde-fou : sortie vide ou > 1,5 × l'entrée → transcription brute.
-- Bascule : Réglages → Nettoyage par IA, ou double tap sur la bulle (étincelle ✦ si actif).
-  L'appui long reste « maintenir pour parler ».
-- Temps de nettoyage affiché sur l'accueil, journalisé, et mesuré au benchmark (WER avant/après).
-
-## État — étape 5 (en cours)
-
-- **Transcription en direct** (Réglages → Détection de la parole → En direct) : VAD en flux
-  pendant l'enregistrement, chaque segment transcrit dès la pause ; au stop il ne reste que
-  le dernier segment. Le nettoyage IA pré-calcule le début du texte pendant qu'on parle
-  (cache KV), l'appel final ne traite que la fin.
-- **Pipeline commun** bulle / essai rapide (`DictationPipeline`).
-- **Dictionnaire personnel** : prompt initial Whisper, prompt système du nettoyage, et
-  correction des variantes proches (casse, accents, trait d'union, distance d'édition
-  pour les termes ≥ 6 lettres) pour tous les moteurs.
-- **Historique** des 50 dernières dictées (brut + final), copie en un tap, effaçable.
-- **Mémoire** : libération des modèles après 5 / 15 / 60 min sans dictée ; test d'endurance
-  de 100 dictées (RSS relevée toutes les 10) dans le benchmark.
-
-- **Accélération matérielle (à mesurer)** :
-  - Parakeet : fournisseur onnxruntime CPU / NNAPI (NPU) / XNNPACK, au choix dans le
-    benchmark et les réglages (repli CPU si indisponible) ;
-  - llama.cpp : variante GPU OpenCL (noyaux Adreno) dans un module `:llmgpu`, liée au
-    `libOpenCL.so` du téléphone (`uses-native-library`, chargeur ICD Khronos pour l'édition
-    de liens seulement) et chargée à la demande ; repli automatique sur le CPU.
-
-## Moteur par défaut (benchmark étape 1, Magic7 Pro)
+## Mesures (Magic7 Pro)
 
 | Config | 10 s d'audio → texte | WER |
 |---|---|---|
 | Parakeet TDT 0.6B v3 int8, 4 threads | 0,69 s | 9,4 % |
 | Whisper large-v3-turbo q8_0, 6 threads | 17,8 s | 9,4 % |
 | Whisper small q8_0, ctx dynamique | 0,9 s | 18 % |
+
+Capture micro : 48 kHz + décimation Speech (le rééchantillonnage 16 kHz du téléphone duplique
+~18 % des échantillons).
+
+## Architecture
+
+- `app/` — Compose, services (accessibilité, micro, téléchargements), pipeline de dictée
+  (`dictation/`), moteurs STT (`stt/`), VAD (`vad/`), nettoyage (`clean/`), benchmark (`bench/`).
+- `app/src/main/cpp` — JNI whisper.cpp (sous-module v1.9.5).
+- `llm/` — JNI llama.cpp CPU (sous-module b11345) ; `llmgpu/` — même JNI avec le backend OpenCL
+  Adreno, chargé à la demande.
+- Natif : `-O3 -march=armv8.2-a+dotprod+fp16+i8mm`, sans OpenMP, symboles masqués
+  (`--exclude-libs,ALL`), toujours compilé en Release.
+- Release : R8 complet (+ retrait des vérifications de nullité Kotlin), ressources réduites,
+  `.so` non compressés alignés 16 Ko, profils ART de Compose installés au premier lancement.
 
 ## Captures d'écran (sans téléphone)
 
@@ -103,8 +66,10 @@ git submodule update --init --recursive
 ./gradlew assembleRelease
 ```
 
-La CI (`.github/workflows/android.yml`) produit l'APK en artefact à chaque push et vérifie le
-catalogue de modèles (`scripts/check_models.py`).
+La CI (`.github/workflows/android.yml`) vérifie le catalogue de modèles
+(`scripts/check_models.py`), lance les tests et publie l'APK : chaque push met à jour la
+pré-release `dev-latest` (utilisée par la mise à jour in-app), chaque tag `v*` crée une release
+stable avec les notes de `docs/release-notes/`.
 
 ### Signature
 
@@ -113,8 +78,8 @@ mises à jour s'installent par-dessus. Pour une clé privée, ajouter dans les s
 `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`
 (changer de clé impose une désinstallation, donc un nouveau téléchargement des modèles).
 
-## Choix natifs
+## Licences des composants
 
-- `-O3 -march=armv8.2-a+dotprod+fp16+i8mm` (Oryon : pas de SVE).
-- ggml sans OpenMP (pool de threads interne), symboles masqués (`--exclude-libs,ALL`).
-- Natif toujours compilé en Release, y compris pour le variant debug.
+whisper.cpp, llama.cpp, onnxruntime, Silero VAD : MIT · sherpa-onnx : Apache 2.0 ·
+Parakeet TDT v3 : CC-BY-4.0 · Whisper : MIT · Qwen 2.5 1.5B : Apache 2.0 ·
+Qwen 2.5 3B : Qwen Research License (usage non commercial) · Manrope : OFL 1.1.

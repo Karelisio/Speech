@@ -79,6 +79,10 @@ data class HomeStatus(
     val modelLoaded: Boolean,
     /** Nom court du modèle de nettoyage IA actif (null : nettoyage désactivé ou indisponible). */
     val cleaner: String? = null,
+    /** Téléchargement du modèle recommandé en cours (0..1), null sinon. */
+    val downloading: Float? = null,
+    /** Taille du modèle recommandé (octets), pour le bouton du premier lancement. */
+    val recommendedSize: Long = 0,
 )
 
 @Composable
@@ -102,6 +106,8 @@ fun HomeScreen(
     var showSave by remember { mutableStateOf(false) }
 
     val cfg = remember(modelStatus) { vm.currentConfig() }
+    // Premier modèle de reconnaissance du catalogue = recommandé (Parakeet).
+    val recommended = remember { app.models.catalog.firstOrNull { it.isStt } }
     LaunchedEffect(cfg) { vm.warmUp() }
     val status = HomeStatus(
         bubbleEnabled = enabled,
@@ -113,6 +119,14 @@ fun HomeScreen(
         captureLabel = if (app.prefs.captureRate == 48_000) "48 kHz" else "16 kHz",
         modelLoaded = cfg != null && app.engines.loadedConfig == cfg,
         cleaner = app.cleanerModelId()?.takeIf { cleaningOn }?.let { app.models.find(it)?.shortName?.removeSuffix(" Instruct") },
+        downloading = recommended?.let { r ->
+            when (val st = modelStatus[r.id]) {
+                is com.karelisio.speech.models.ModelStatus.Downloading -> if (st.total > 0) st.done.toFloat() / st.total else 0f
+                com.karelisio.speech.models.ModelStatus.Queued, com.karelisio.speech.models.ModelStatus.Verifying -> 0f
+                else -> null
+            }
+        },
+        recommendedSize = recommended?.totalSize ?: 0,
     )
     HomeContent(
         modifier = modifier,
@@ -130,6 +144,7 @@ fun HomeScreen(
         onAddToBench = { showSave = true },
         onOpenPermissions = onOpenPermissions,
         onOpenModels = onOpenModels,
+        onDownloadRecommended = { recommended?.let { app.models.download(it.id) } },
         accessibilityOn = SpeechAccessibilityService.isEnabled(context),
         recent = app.history.entries.collectAsState().value.take(3),
         onCopyEntry = { copyText(context, "dictée", it.text) },
@@ -168,6 +183,7 @@ fun HomeContent(
     onOpenPermissions: () -> Unit,
     onOpenModels: () -> Unit,
     modifier: Modifier = Modifier,
+    onDownloadRecommended: () -> Unit = {},
     accessibilityOn: Boolean = true,
     recent: List<HistoryEntry> = emptyList(),
     onCopyEntry: (HistoryEntry) -> Unit = {},
@@ -178,7 +194,7 @@ fun HomeContent(
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         if (status.modelName == null || status.missingPermissions > 0) {
-            SetupCard(status, onOpenPermissions, onOpenModels)
+            SetupCard(status, onOpenPermissions, onDownloadRecommended)
         }
 
         // --- Bulle ---
@@ -337,7 +353,7 @@ private fun HeroChip(text: String) {
 }
 
 @Composable
-private fun SetupCard(status: HomeStatus, onOpenPermissions: () -> Unit, onOpenModels: () -> Unit) {
+private fun SetupCard(status: HomeStatus, onOpenPermissions: () -> Unit, onDownloadRecommended: () -> Unit) {
     Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.errorContainer) {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -353,15 +369,23 @@ private fun SetupCard(status: HomeStatus, onOpenPermissions: () -> Unit, onOpenM
             }
             if (status.modelName == null) {
                 Text(
-                    "Aucun modèle de reconnaissance vocale téléchargé.",
+                    if (status.downloading != null) "Téléchargement du modèle de reconnaissance… ${(status.downloading * 100).toInt()} %"
+                    else "Aucun modèle de reconnaissance vocale téléchargé (une seule fois, ensuite tout est hors ligne).",
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onErrorContainer,
                 )
+                status.downloading?.let { p ->
+                    androidx.compose.material3.LinearProgressIndicator(
+                        progress = { p }, modifier = Modifier.fillMaxWidth().height(8.dp),
+                        strokeCap = androidx.compose.ui.graphics.StrokeCap.Round, drawStopIndicator = {},
+                    )
+                }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (status.missingPermissions > 0) Button(onClick = onOpenPermissions) { Text("Autorisations") }
-                if (status.modelName == null) {
-                    Button(onClick = onOpenModels) {
-                        Icon(Icons.Rounded.Download, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Modèles")
+                if (status.modelName == null && status.downloading == null) {
+                    Button(onClick = onDownloadRecommended) {
+                        Icon(Icons.Rounded.Download, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp))
+                        Text("Télécharger (${formatMb(status.recommendedSize)})")
                     }
                 }
             }

@@ -53,7 +53,22 @@ class BubbleView(context: Context, diameterPx: Int) : View(context) {
         color = Color.argb(70, 0, 0, 0)
         maskFilter = BlurMaskFilter(1f, BlurMaskFilter.Blur.NORMAL)
     }
-    private var shaderKey = 0
+    // Dégradés et flou recalculés seulement quand la taille change (pas d'allocation dans onDraw).
+    private var idleShader: Shader? = null
+    private var recShader: Shader? = null
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        val cx = w / 2f
+        val cy = h / 2f
+        val r = diameterPx / 2f
+        idleShader = LinearGradient(cx - r, cy - r, cx + r, cy + r, accent, accent2, Shader.TileMode.CLAMP)
+        recShader = LinearGradient(cx - r, cy - r, cx + r, cy + r, recording, recording2, Shader.TileMode.CLAMP)
+        shadow.maskFilter = BlurMaskFilter(r * 0.18f, BlurMaskFilter.Blur.NORMAL)
+    }
+
+    // Les gestes sont gérés par BubbleController ; performClick garde l'accessibilité correcte.
+    override fun performClick(): Boolean = super.performClick()
     private val ring = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val arc = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
@@ -85,20 +100,16 @@ class BubbleView(context: Context, diameterPx: Int) : View(context) {
         val cy = height / 2f
         val r = diameterPx / 2f
         val rec = state == State.RECORDING
-        val (c1, c2) = if (rec) recording to recording2 else accent to accent2
+        val c1 = if (rec) recording else accent
+        val c2 = if (rec) recording2 else accent2
         if (rec) {
             ring.color = c1
             ring.alpha = 80
             canvas.drawCircle(cx, cy, r + level * (width / 2f - r), ring)
         } else {
-            shadow.maskFilter = BlurMaskFilter(r * 0.18f, BlurMaskFilter.Blur.NORMAL)
             canvas.drawCircle(cx, cy + r * 0.08f, r * 0.98f, shadow)
         }
-        val key = (if (rec) 1 else 0) * 31 + width
-        if (key != shaderKey) {
-            fill.shader = LinearGradient(cx - r, cy - r, cx + r, cy + r, c1, c2, Shader.TileMode.CLAMP)
-            shaderKey = key
-        }
+        fill.shader = if (rec) recShader else idleShader
         canvas.drawCircle(cx, cy, r, fill)
         if (state == State.PROCESSING) {
             arc.strokeWidth = r * 0.14f

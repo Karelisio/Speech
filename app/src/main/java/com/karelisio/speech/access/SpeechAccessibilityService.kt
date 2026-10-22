@@ -356,8 +356,8 @@ class SpeechAccessibilityService : AccessibilityService(), BubbleController.List
     /** Texte réel du champ (sans le texte d'indication affiché quand il est vide). */
     private fun currentText(node: AccessibilityNodeInfo): String {
         val raw = node.text?.toString() ?: ""
-        val hint = if (Build.VERSION.SDK_INT >= 26) node.hintText?.toString() else null
-        val showingHint = Build.VERSION.SDK_INT >= 26 && node.isShowingHintText
+        val hint = node.hintText?.toString()
+        val showingHint = node.isShowingHintText
         return if (showingHint || (hint != null && raw == hint)) "" else raw
     }
 

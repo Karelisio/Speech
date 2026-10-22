@@ -255,7 +255,7 @@ class BubbleController(
                             hideTarget()
                             if (dismiss) { haptic(); listener.onDismiss() } else snapToEdge()
                         }
-                        e.actionMasked == MotionEvent.ACTION_UP -> { haptic(); listener.onTap() }
+                        e.actionMasked == MotionEvent.ACTION_UP -> { haptic(); v.performClick(); listener.onTap() }
                     }
                     dragging = false; holding = false
                 }
