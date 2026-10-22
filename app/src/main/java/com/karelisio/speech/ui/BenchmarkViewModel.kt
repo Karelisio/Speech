@@ -15,7 +15,7 @@ import com.karelisio.speech.bench.ConfigResult
 import com.karelisio.speech.models.EngineKind
 import com.karelisio.speech.stt.EngineConfig
 import com.karelisio.speech.util.AppLog
-import com.karelisio.speech.util.DeviceInfo
+import com.karelisio.speech.util.Prefs
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -44,14 +44,13 @@ class BenchmarkViewModel(application: Application) : AndroidViewModel(applicatio
     private var job: Job? = null
     private var lastPlan: BenchPlan? = null
 
-    val threadChoices: List<Int> = (listOf(2, 4, 6, 8) + DeviceInfo.performanceCoreCount())
+    val threadChoices: List<Int> = listOf(1, 2, 3, 4, 5, 6, 8)
         .filter { it <= Runtime.getRuntime().availableProcessors() }
-        .distinct().sorted()
 
     private val _ui = MutableStateFlow(
         BenchUi(
             selectedModels = app.models.readyModels().map { it.id }.toSet(),
-            threads = setOf(DeviceInfo.performanceCoreCount()),
+            threads = setOf(Prefs.DEFAULT_THREADS),
         )
     )
     val ui: StateFlow<BenchUi> = _ui

@@ -12,7 +12,7 @@ class CatalogTest {
     @Test fun bundledCatalogParses() {
         val models = ModelCatalog.parse(File("src/main/assets/models.json").readText())
         assertTrue(models.any { it.engine == EngineKind.PARAKEET })
-        assertTrue(models.count { it.engine == EngineKind.WHISPER } >= 3)
+        assertTrue(models.count { it.engine == EngineKind.WHISPER } >= 2)
         assertEquals(models.size, models.map { it.id }.toSet().size)
         models.forEach { m ->
             assertTrue("révision non épinglée : ${m.id}", m.revision.matches(Regex("[0-9a-f]{40}")))

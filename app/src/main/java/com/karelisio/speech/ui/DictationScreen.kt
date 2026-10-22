@@ -42,7 +42,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.karelisio.speech.SpeechApp
-import com.karelisio.speech.util.DeviceInfo
+import com.karelisio.speech.util.Prefs
 
 @Composable
 fun DictationScreen(modifier: Modifier = Modifier, vm: DictationViewModel = viewModel()) {
@@ -72,10 +72,10 @@ fun DictationScreen(modifier: Modifier = Modifier, vm: DictationViewModel = view
                     Dropdown("Modèle : ${active?.name ?: "—"}", ready.map { it.id to it.name }) {
                         app.prefs.activeModelId = it; refresh++
                     }
-                    val perf = DeviceInfo.performanceCoreCount()
+                    val def = Prefs.DEFAULT_THREADS
                     Dropdown(
-                        "Threads : " + if (app.prefs.threads == 0) "auto ($perf)" else "${app.prefs.threads}",
-                        listOf(0 to "auto ($perf)") + (1..Runtime.getRuntime().availableProcessors()).map { it to "$it" },
+                        "Threads : " + if (app.prefs.threads == 0) "auto ($def)" else "${app.prefs.threads}",
+                        listOf(0 to "auto ($def)") + (1..Runtime.getRuntime().availableProcessors()).map { it to "$it" },
                     ) { app.prefs.threads = it; refresh++ }
                     Dropdown(
                         "Langue : ${app.prefs.language}",

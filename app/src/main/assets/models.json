@@ -4,7 +4,7 @@
       "id": "parakeet-tdt-0.6b-v3-int8",
       "name": "Parakeet TDT 0.6B v3 · int8",
       "engine": "parakeet",
-      "description": "sherpa-onnx. 25 langues européennes dont le français. Candidat le plus rapide.",
+      "description": "sherpa-onnx. Recommandé : ~0,7 s pour 10 s d'audio, WER 9 % (mesuré sur Magic7 Pro).",
       "repo": "csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8",
       "revision": "2bda32ec70b097a55adaa07d9a7173915b43cc78",
       "files": [
@@ -31,25 +31,10 @@
       ]
     },
     {
-      "id": "whisper-large-v3-turbo-q5_0",
-      "name": "Whisper large-v3-turbo · q5_0",
-      "engine": "whisper",
-      "description": "whisper.cpp. Meilleure précision attendue en français.",
-      "repo": "ggerganov/whisper.cpp",
-      "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
-      "files": [
-        {
-          "path": "ggml-large-v3-turbo-q5_0.bin",
-          "size": 574041195,
-          "sha256": "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2"
-        }
-      ]
-    },
-    {
       "id": "whisper-large-v3-turbo-q8_0",
       "name": "Whisper large-v3-turbo · q8_0",
       "engine": "whisper",
-      "description": "whisper.cpp. Quantification plus fine que q5_0 : à comparer en vitesse et précision.",
+      "description": "whisper.cpp. Précision proche de Parakeet mais ~18 s pour 10 s d'audio sur CPU.",
       "repo": "ggerganov/whisper.cpp",
       "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
       "files": [
@@ -64,7 +49,7 @@
       "id": "whisper-small-q8_0",
       "name": "Whisper small · q8_0",
       "engine": "whisper",
-      "description": "whisper.cpp. Modèle léger de secours.",
+      "description": "whisper.cpp. Léger mais WER ~18 % en français.",
       "repo": "ggerganov/whisper.cpp",
       "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
       "files": [

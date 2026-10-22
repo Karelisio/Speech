@@ -49,6 +49,14 @@ class ModelManager(private val context: Context, private val scope: CoroutineSco
     private val _status = MutableStateFlow(catalog.associate { it.id to initialStatus(it) })
     val status: StateFlow<Map<String, ModelStatus>> = _status
 
+    init {
+        // Modèles retirés du catalogue (ex. whisper q5_0) : on libère la place.
+        root.listFiles()?.filter { d -> d.isDirectory && catalog.none { it.id == d.name } }?.forEach {
+            AppLog.i(TAG, "suppression du modèle obsolète ${it.name}")
+            it.deleteRecursively()
+        }
+    }
+
     private val jobs = mutableMapOf<String, Job>()
     private val queue = Mutex() // un téléchargement à la fois : toute la bande passante pour le premier
 

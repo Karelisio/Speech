@@ -11,7 +11,7 @@ class Prefs(context: Context) {
         get() = sp.getString("active_model", null)
         set(v) = sp.edit { putString("active_model", v) }
 
-    /** 0 = automatique (nombre de cœurs performance). */
+    /** 0 = valeur par défaut mesurée ([DEFAULT_THREADS]). */
     var threads: Int
         get() = sp.getInt("threads", 0)
         set(v) = sp.edit { putInt("threads", v) }
@@ -32,5 +32,13 @@ class Prefs(context: Context) {
     fun wasAsked(permission: String) = sp.getBoolean("asked_$permission", false)
     fun markAsked(permission: String) = sp.edit { putBoolean("asked_$permission", true) }
 
-    fun effectiveThreads(): Int = threads.takeIf { it > 0 } ?: DeviceInfo.performanceCoreCount()
+    fun effectiveThreads(): Int = threads.takeIf { it > 0 } ?: DEFAULT_THREADS
+
+    companion object {
+        /**
+         * Benchmark Magic7 Pro (étape 1) : Parakeet 397 ms à 4 threads, 681 ms à 6, 849 ms à 8 ;
+         * Whisper s'effondre à 8 threads. 4 est le meilleur compromis mesuré.
+         */
+        const val DEFAULT_THREADS = 4
+    }
 }
