@@ -21,6 +21,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.DeleteOutline
@@ -231,6 +232,12 @@ fun BenchmarkScreen(modifier: Modifier = Modifier, vm: BenchmarkViewModel = view
             GroupDivider()
             SwitchRow(Icons.Rounded.Tune, "Whisper : contexte audio réduit", "Compare aussi la variante rapide", ui.compareWhisperCtx, vm::setCompareCtx)
             GroupDivider()
+            SwitchRow(
+                Icons.Rounded.AutoAwesome, "Nettoyage IA",
+                if (vm.llmReady) "Mesure aussi le nettoyage (temps et taux d'erreur)" else "Aucun modèle de langage téléchargé",
+                ui.clean && vm.llmReady,
+            ) { if (vm.llmReady) vm.setClean(it) }
+            GroupDivider()
             SegmentedRow(Icons.Rounded.Repeat, "Répétitions par clip", "La médiane est retenue", listOf(1 to "1", 3 to "3"), ui.repetitions, vm::setRepetitions)
             GroupDivider()
             val n = vm.plannedConfigs().size * (if (vm.vadReady) ui.modes.size else 1)
@@ -335,6 +342,12 @@ private fun ResultCard(r: ConfigResult, clips: List<BenchClip>) {
                 "pour 10 s" to "${r.latency10sMs} ms",
                 "erreurs" to (r.wer?.let { "%.1f %%".format(it.rate * 100) } ?: "—"),
             )
+            r.meanCleanMs?.let { ms ->
+                StatRow(
+                    "nettoyage IA" to "$ms ms",
+                    "erreurs après IA" to (r.cleanedWer?.let { "%.1f %%".format(it.rate * 100) } ?: "—"),
+                )
+            }
             Text(
                 "RTF %.3f · VAD %d ms · chargement %d ms · RAM modèle %d Mo · pic %d Mo".format(
                     r.rtf, r.meanVadMs, r.loadMs, r.rssLoadedMb - r.rssBeforeMb, r.rssPeakMb,
@@ -352,6 +365,12 @@ private fun ResultCard(r: ConfigResult, clips: List<BenchClip>) {
                             "#$idx · ${c.medianMs} ms" + (c.wer?.let { " · %.0f %%".format(it.rate * 100) } ?: "") + " — ${c.text}",
                             style = MaterialTheme.typography.bodySmall,
                         )
+                        c.cleanedText?.let { t ->
+                            Text(
+                                "   ✦ ${c.cleanMs} ms" + (c.cleanedWer?.let { " · %.0f %%".format(it.rate * 100) } ?: "") + " — $t",
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
                     }
                 }
             }

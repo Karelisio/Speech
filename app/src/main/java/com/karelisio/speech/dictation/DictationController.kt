@@ -39,12 +39,17 @@ class DictationController(private val app: SpeechApp) {
 
     /** Dernier résultat, pour l'affichage dans l'app. */
     val lastResult = MutableStateFlow<String?>(null)
+    /** Moment où l'enregistrement a commencé (détection du double tap sur la bulle). */
+    var recordingStartedAt = 0L
+        private set
 
     @SuppressLint("MissingPermission") // l'autorisation micro est vérifiée par l'appelant
     fun start(): Boolean {
         if (_state.value != State.IDLE || app.recorder.isRecording) return false
+        // Le modèle de nettoyage et son prompt système se préparent pendant qu'on parle.
+        if (app.cleaningActive()) app.cleaners.warmUpAsync(app.cleanerModelId()!!, app.prefs.llmThreads)
         return runCatching { app.recorder.start() }
-            .onSuccess { _state.value = State.RECORDING }
+            .onSuccess { _state.value = State.RECORDING; recordingStartedAt = SystemClock.elapsedRealtime() }
             .onFailure { AppLog.e(TAG, "micro indisponible", it) }
             .isSuccess
     }
@@ -76,14 +81,28 @@ class DictationController(private val app: SpeechApp) {
                     Transcriber.run(it, app.vad(), audio, mode, SttRequest(app.prefs.language))
                 }
                 val tText = SystemClock.elapsedRealtime()
-                val outcome = if (r.text.isBlank()) InsertOutcome.EMPTY
-                else sink?.insert(r.text) ?: InsertOutcome.CLIPBOARD_ONLY
+                val llm = app.cleanerModelId()
+                val cleaned = if (r.text.isNotBlank() && app.cleaning.value && llm != null) {
+                    app.cleaners.clean(llm, app.prefs.llmThreads, r.text).also {
+                        AppLog.i(
+                            TAG,
+                            "nettoyage ${it.totalMs} ms (prompt ${it.promptTokens} tok ${"%.0f".format(it.promptMs)} ms, " +
+                                "${it.reusedTokens} en cache, ${it.genTokens} générés ${"%.0f".format(it.genMs)} ms)" +
+                                (it.reason?.let { why -> " — brut conservé : $why" } ?: ""),
+                        )
+                    }.text
+                } else {
+                    r.text
+                }
+                val tClean = SystemClock.elapsedRealtime()
+                val outcome = if (cleaned.isBlank()) InsertOutcome.EMPTY
+                else sink?.insert(cleaned) ?: InsertOutcome.CLIPBOARD_ONLY
                 val tInsert = SystemClock.elapsedRealtime()
-                lastResult.value = r.text
+                lastResult.value = cleaned
                 AppLog.i(
                     TAG,
                     "audio ${audio.size / 16} ms → texte ${tText - tStop} ms (VAD ${r.vadMs} ms, ${mode.short}, " +
-                        "${r.segments} segment(s)), inséré ${tInsert - tStop} ms ($outcome)" +
+                        "${r.segments} segment(s)), nettoyé ${tClean - tStop} ms, inséré ${tInsert - tStop} ms ($outcome)" +
                         if (!r.speech) " — aucune parole détectée" else "",
                 )
             } catch (e: Exception) {
@@ -92,6 +111,14 @@ class DictationController(private val app: SpeechApp) {
                 _state.value = State.IDLE
             }
         }
+    }
+
+    /** Bascule rapide du nettoyage IA (double tap sur la bulle). */
+    fun toggleCleaning(): Boolean {
+        val on = !app.cleaning.value
+        app.setCleaning(on)
+        AppLog.i(TAG, "nettoyage IA ${if (on) "activé" else "désactivé"}")
+        return on
     }
 
     /** Abandonne l'enregistrement en cours sans transcrire. */

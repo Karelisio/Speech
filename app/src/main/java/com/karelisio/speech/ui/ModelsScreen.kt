@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.DeleteOutline
@@ -55,17 +56,22 @@ fun ModelsScreen(modifier: Modifier = Modifier) {
     val app = LocalContext.current.applicationContext as SpeechApp
     val status by app.models.status.collectAsState()
     var active by remember { mutableStateOf(app.prefs.activeModelId ?: app.models.readyModels().firstOrNull()?.id) }
+    var activeLlm by remember { mutableStateOf(app.cleanerModelId()) }
     ModelsContent(
         modifier = modifier,
         models = app.models.catalog,
         status = status,
         activeId = active,
+        activeLlmId = activeLlm,
         freeBytes = app.filesDir.usableSpace,
         sizeOnDisk = { app.models.sizeOnDisk(it) },
         onDownload = { app.models.download(it) },
         onCancel = { app.models.cancel(it) },
         onDelete = { app.models.delete(it) },
-        onUse = { app.prefs.activeModelId = it; active = it },
+        onUse = { id ->
+            if (app.models.find(id)?.engine == EngineKind.LLM) { app.prefs.activeLlmId = id; activeLlm = id }
+            else { app.prefs.activeModelId = id; active = id }
+        },
     )
 }
 
@@ -75,6 +81,7 @@ fun ModelsContent(
     status: Map<String, ModelStatus>,
     activeId: String?,
     freeBytes: Long,
+    activeLlmId: String? = null,
     sizeOnDisk: (ModelInfo) -> Long,
     onDownload: (String) -> Unit,
     onCancel: (String) -> Unit,
@@ -88,9 +95,9 @@ fun ModelsContent(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item { StorageCard(used, freeBytes) }
-        items(models.sortedBy { !it.isStt }, key = { it.id }) { m ->
+        items(models.sortedBy { if (it.isStt) 0 else if (it.engine == EngineKind.LLM) 1 else 2 }, key = { it.id }) { m ->
             ModelCard(
-                m, status[m.id] ?: ModelStatus.Absent, active = m.id == activeId,
+                m, status[m.id] ?: ModelStatus.Absent, active = m.id == activeId || m.id == activeLlmId,
                 size = if (status[m.id] == ModelStatus.Ready) sizeOnDisk(m) else m.totalSize,
                 onDownload = { onDownload(m.id) }, onCancel = { onCancel(m.id) },
                 onDelete = { onDelete(m.id) }, onUse = { onUse(m.id) },
@@ -156,6 +163,7 @@ private fun ModelCard(
                     when (m.engine) {
                         EngineKind.PARAKEET -> Icons.Rounded.Bolt
                         EngineKind.VAD -> Icons.Rounded.Hearing
+                        EngineKind.LLM -> Icons.Rounded.AutoAwesome
                         EngineKind.WHISPER -> Icons.Rounded.GraphicEq
                     },
                     container = s.primaryContainer, content = s.onPrimaryContainer, size = 48,
@@ -165,7 +173,11 @@ private fun ModelCard(
                     Text(m.shortName, style = MaterialTheme.typography.titleMedium)
                     Text(
                         listOfNotNull(
-                            if (m.engine == EngineKind.WHISPER) "whisper.cpp" else "sherpa-onnx",
+                            when (m.engine) {
+                                EngineKind.WHISPER -> "whisper.cpp"
+                                EngineKind.LLM -> "llama.cpp"
+                                else -> "sherpa-onnx"
+                            },
                             m.name.substringAfter("· ", "").ifEmpty { null },
                             if (size < 1_000_000) "${size / 1000} Ko" else formatMb(size),
                         ).joinToString(" · "),
@@ -180,7 +192,7 @@ private fun ModelCard(
                     m.tags.forEach { t ->
                         val (bg, fg) = when (t) {
                             "Recommandé" -> s.primary to s.onPrimary
-                            "Outil" -> s.secondaryContainer to s.onSecondaryContainer
+                            "Outil", "IA" -> s.secondaryContainer to s.onSecondaryContainer
                             "Rapide", "Léger" -> s.tertiaryContainer to s.onTertiaryContainer
                             "Lent sur CPU" -> s.errorContainer to s.onErrorContainer
                             else -> s.secondaryContainer to s.onSecondaryContainer

@@ -26,6 +26,13 @@ data class DictationUi(
     val micOpenMs: Long? = null,
     val loadMs: Long? = null,
     val error: String? = null,
+    /** Transcription brute quand le nettoyage IA l'a modifiée. */
+    val raw: String? = null,
+    /** Durée du nettoyage IA (null : pas de nettoyage). */
+    val cleanMs: Long? = null,
+    /** Durée de la reconnaissance seule. */
+    val sttMs: Long? = null,
+    val cleanNote: String? = null,
 )
 
 class DictationViewModel(application: Application) : AndroidViewModel(application) {
@@ -71,12 +78,24 @@ class DictationViewModel(application: Application) : AndroidViewModel(applicatio
         }
         viewModelScope.launch {
             runCatching {
-                app.engines.use(cfg) { Transcriber.run(it, app.vad(), audio, app.prefs.vadMode, SttRequest(app.prefs.language)) }
-            }.onSuccess { r ->
+                val r = app.engines.use(cfg) { Transcriber.run(it, app.vad(), audio, app.prefs.vadMode, SttRequest(app.prefs.language)) }
+                val sttMs = SystemClock.elapsedRealtime() - tStop
+                val llm = app.cleanerModelId()
+                val c = if (r.text.isNotBlank() && app.cleaning.value && llm != null) {
+                    app.cleaners.clean(llm, app.prefs.llmThreads, r.text)
+                } else null
+                Triple(r, sttMs, c)
+            }.onSuccess { (r, sttMs, c) ->
                 val latency = SystemClock.elapsedRealtime() - tStop
-                AppLog.i("Dictation", "${cfg.label()} : ${audio.size / 16} ms d'audio → $latency ms après stop")
+                AppLog.i("Dictation", "${cfg.label()} : ${audio.size / 16} ms d'audio → $latency ms après stop" +
+                    (c?.let { " (dont nettoyage ${it.totalMs} ms)" } ?: ""))
                 _ui.update {
-                    it.copy(processing = false, text = r.text, latencyMs = latency, audioMs = audio.size / 16L)
+                    it.copy(
+                        processing = false, text = c?.text ?: r.text, latencyMs = latency, audioMs = audio.size / 16L,
+                        raw = r.text.takeIf { c != null && c.applied && c.text != r.text },
+                        cleanMs = c?.totalMs, sttMs = sttMs,
+                        cleanNote = c?.reason?.let { why -> "Nettoyage ignoré : $why" },
+                    )
                 }
             }.onFailure { e ->
                 AppLog.e("Dictation", "échec", e)

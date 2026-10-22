@@ -73,6 +73,46 @@
       ]
     },
     {
+      "id": "qwen2.5-1.5b-instruct-q4_0",
+      "name": "Qwen 2.5 1.5B Instruct · Q4_0",
+      "engine": "llm",
+      "description": "Nettoyage du texte (hésitations, ponctuation, auto-corrections). Q4_0 : poids réarrangés pour les instructions i8mm.",
+      "repo": "Qwen/Qwen2.5-1.5B-Instruct-GGUF",
+      "revision": "main",
+      "pending": true,
+      "files": [
+        {
+          "path": "qwen2.5-1.5b-instruct-q4_0.gguf",
+          "size": 0,
+          "sha256": null
+        }
+      ],
+      "tags": [
+        "IA",
+        "Recommandé"
+      ]
+    },
+    {
+      "id": "qwen2.5-3b-instruct-q4_0",
+      "name": "Qwen 2.5 3B Instruct · Q4_0",
+      "engine": "llm",
+      "description": "Nettoyage plus soigné, environ deux fois plus lent que le 1.5B.",
+      "repo": "Qwen/Qwen2.5-3B-Instruct-GGUF",
+      "revision": "main",
+      "pending": true,
+      "files": [
+        {
+          "path": "qwen2.5-3b-instruct-q4_0.gguf",
+          "size": 0,
+          "sha256": null
+        }
+      ],
+      "tags": [
+        "IA",
+        "Qualité"
+      ]
+    },
+    {
       "id": "silero-vad",
       "name": "Silero VAD",
       "engine": "vad",

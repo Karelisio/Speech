@@ -3,6 +3,7 @@ package com.karelisio.speech.bench
 import android.content.Context
 import android.os.PowerManager
 import android.os.SystemClock
+import com.karelisio.speech.clean.CleanResult
 import com.karelisio.speech.models.ModelManager
 import com.karelisio.speech.stt.EngineConfig
 import com.karelisio.speech.stt.EngineFactory
@@ -35,6 +36,10 @@ data class ClipResult(
     val totalMs: Long = 0,
     val vadMs: Long = 0,
     val segments: Int = 1,
+    /** Nettoyage IA (si demandé au benchmark). */
+    val cleanMs: Long? = null,
+    val cleanedText: String? = null,
+    val cleanedWer: Wer.Score? = null,
 ) {
     val medianMs: Long get() = runsMs.sorted()[runsMs.size / 2]
 }
@@ -64,6 +69,13 @@ data class ConfigResult(
         get() = if (mode == VadMode.SEGMENTS) meanLatencyMs // ne dépend que du dernier segment
         else if (totalAudioMs == 0L) 0 else clips.sumOf { it.medianMs } * 10_000 / totalAudioMs
     val meanVadMs: Long get() = if (clips.isEmpty()) 0 else clips.sumOf { it.vadMs } / clips.size
+    val meanCleanMs: Long? get() = clips.mapNotNull { it.cleanMs }.takeIf { it.isNotEmpty() }?.let { it.sum() / it.size }
+    val cleanedWer: Wer.Score?
+        get() {
+            val scored = clips.mapNotNull { it.cleanedWer }
+            if (scored.isEmpty()) return null
+            return Wer.Score(scored.sumOf { it.errors }, scored.sumOf { it.refWords })
+        }
     val wer: Wer.Score?
         get() {
             val scored = clips.mapNotNull { it.wer }
@@ -94,12 +106,14 @@ class BenchmarkRunner(
     suspend fun run(
         plan: BenchPlan,
         vad: VadProcessor?,
+        cleaner: (suspend (String) -> CleanResult)?,
         onProgress: (String, Float) -> Unit,
         onResult: (ConfigResult) -> Unit,
     ) = withContext(Dispatchers.Default) {
         val audio = plan.clips.associate { it.id to clipStore.samples(it) }
         val modes = plan.modes.filter { it == VadMode.OFF || vad != null }.ifEmpty { listOf(VadMode.OFF) }
-        val steps = plan.configs.size * (modes.size * plan.clips.size * plan.repetitions + 2)
+        val perClip = plan.repetitions + if (cleaner != null) 1 else 0
+        val steps = plan.configs.size * (modes.size * plan.clips.size * perClip + 2)
         var step = 0
         fun tick(msg: String) = onProgress(msg, step++.toFloat() / steps)
 
@@ -145,10 +159,16 @@ class BenchmarkRunner(
                             last = r
                         }
                         val r = last!!
+                        val c = if (cleaner != null && r.text.isNotBlank()) {
+                            tick("${cfg.label()} · ${mode.short} — nettoyage IA ${ci + 1}/${plan.clips.size}")
+                            cleaner(r.text)
+                        } else null
                         ClipResult(
                             clipId = clip.id, durationMs = clip.durationMs, runsMs = runs, text = r.text,
                             encodeMs = null, wer = clip.reference?.let { Wer.score(it, r.text) },
                             totalMs = totals.sorted()[totals.size / 2], vadMs = r.vadMs, segments = r.segments,
+                            cleanMs = c?.totalMs, cleanedText = c?.text,
+                            cleanedWer = c?.let { cc -> clip.reference?.let { Wer.score(it, cc.text) } },
                         )
                     }
                     base.copy(mode = mode, loadMs = loadMs, rssLoadedMb = rssLoaded, clips = clipResults)

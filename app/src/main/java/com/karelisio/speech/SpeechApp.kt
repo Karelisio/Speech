@@ -3,6 +3,7 @@ package com.karelisio.speech
 import android.app.Application
 import com.karelisio.speech.audio.AudioRecorder
 import com.karelisio.speech.bench.BenchClips
+import com.karelisio.speech.clean.CleanerHolder
 import com.karelisio.speech.dictation.DictationController
 import com.karelisio.speech.overlay.BubbleState
 import com.karelisio.speech.stt.EngineConfig
@@ -37,6 +38,11 @@ class SpeechApp : Application() {
         private set
     lateinit var updates: UpdateManager
         private set
+    lateinit var cleaners: CleanerHolder
+        private set
+    /** Nettoyage IA activé (réglage global, bascule rapide par double tap sur la bulle). */
+    val cleaning = MutableStateFlow(true)
+
     /** Thème choisi dans Réglages → Apparence. */
     val appearance = MutableStateFlow(Appearance(ThemeMode.SYSTEM, true))
 
@@ -51,6 +57,8 @@ class SpeechApp : Application() {
         controller = DictationController(this)
         updates = UpdateManager(this, appScope)
         appearance.value = Appearance(prefs.themeMode, prefs.dynamicColor)
+        cleaners = CleanerHolder(models, appScope)
+        cleaning.value = prefs.cleaningEnabled
         AppLog.i("App", "démarrage\n" + DeviceInfo.summary(this))
     }
 
@@ -65,6 +73,18 @@ class SpeechApp : Application() {
             .onFailure { AppLog.e("VAD", "chargement impossible", it) }
             .getOrNull()
             ?.also { vadProcessor = it }
+    }
+
+    /** Modèle de nettoyage à utiliser (choisi, sinon le premier téléchargé) ; null si aucun. */
+    fun cleanerModelId(): String? =
+        prefs.activeLlmId?.takeIf { models.isReady(it) } ?: models.readyLlms().firstOrNull()?.id
+
+    /** Nettoyage effectif : activé et modèle disponible. */
+    fun cleaningActive(): Boolean = cleaning.value && cleanerModelId() != null
+
+    fun setCleaning(enabled: Boolean) {
+        prefs.cleaningEnabled = enabled
+        cleaning.value = enabled
     }
 
     /** Configuration du moteur de dictée : modèle actif (Parakeet par défaut) et threads. */

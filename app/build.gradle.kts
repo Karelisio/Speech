@@ -156,6 +156,7 @@ android {
 
 dependencies {
     implementation(files(sherpaAar))
+    implementation(project(":llm"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)

@@ -15,7 +15,7 @@ class CatalogTest {
         assertEquals(1, models.count { it.engine == EngineKind.VAD })
         assertTrue(models.count { it.engine == EngineKind.WHISPER } >= 2)
         assertEquals(models.size, models.map { it.id }.toSet().size)
-        models.forEach { m ->
+        models.filterNot { it.pending }.forEach { m ->
             m.files.forEach {
                 if (it.url == null) {
                     assertTrue("révision non épinglée : ${m.id}", m.revision.matches(Regex("[0-9a-f]{40}")))

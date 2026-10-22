@@ -16,7 +16,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Article
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.RecordVoiceOver
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.DarkMode
+import androidx.compose.material.icons.rounded.Psychology
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Keyboard
@@ -146,6 +148,32 @@ fun SettingsScreen(modifier: Modifier = Modifier, onOpenPermissions: () -> Unit,
             GroupDivider()
             SwitchRow(Icons.Rounded.Tune, "Contexte audio réduit", "Whisper uniquement : plus rapide, moins fiable", prefs.whisperDynamicAudioCtx) {
                 prefs.whisperDynamicAudioCtx = it; changed()
+            }
+        }
+
+        // --- Nettoyage IA ---
+        val cleaningOn by app.cleaning.collectAsState()
+        val llms = remember(modelStatus) { app.models.readyLlms() }
+        SectionTitle("Nettoyage par IA")
+        GroupCard {
+            SwitchRow(
+                Icons.Rounded.AutoAwesome, "Nettoyer le texte",
+                if (llms.isEmpty()) "Télécharge Qwen dans l'onglet Modèles" else "Hésitations, ponctuation, « non pardon… ». Double tap sur la bulle pour basculer",
+                cleaningOn,
+            ) { app.setCleaning(it) }
+            if (llms.isNotEmpty()) {
+                GroupDivider()
+                val llmId = app.cleanerModelId()
+                MenuRow(
+                    Icons.Rounded.Psychology, "Modèle de langage",
+                    llms.firstOrNull { it.id == llmId }?.name ?: "—",
+                    llms.map { it.id to it.name },
+                ) { prefs.activeLlmId = it; changed() }
+                GroupDivider()
+                SegmentedRow(
+                    Icons.Rounded.Speed, "Threads IA", "À mesurer au benchmark",
+                    listOf(2 to "2", 3 to "3", 4 to "4", 6 to "6"), prefs.llmThreads,
+                ) { prefs.llmThreads = it; changed() }
             }
         }
 

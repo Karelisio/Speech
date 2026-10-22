@@ -20,6 +20,7 @@ object BenchReport {
         appendLine("```")
         appendLine(DeviceInfo.summary(context))
         appendLine("whisper.cpp : " + runCatching { WhisperNative.systemInfo().trim() }.getOrDefault("?"))
+        appendLine("llama.cpp : " + runCatching { com.karelisio.speech.llm.LlamaNative.systemInfo().trim() }.getOrDefault("?"))
         appendLine("```")
         val usedClips = clips.filter { c -> results.any { r -> r.clips.any { it.clipId == c.id } } }
         appendLine("Clips : ${usedClips.size} (${"%.1f".format(usedClips.sumOf { it.durationMs } / 1000.0)} s au total)" +
@@ -43,6 +44,16 @@ object BenchReport {
                     "${thermalLabel(r.thermalStart)}→${thermalLabel(r.thermalEnd)} |"
             )
         }
+        if (results.any { it.meanCleanMs != null }) {
+            appendLine()
+            appendLine("### Nettoyage IA")
+            appendLine("| Config | Nettoyage moy. ms | WER brut | WER après IA |")
+            appendLine("|---|---|---|---|")
+            for (r in results.filter { it.meanCleanMs != null }) {
+                appendLine("| ${r.label} | ${r.meanCleanMs} | ${r.wer?.let { "%.1f %%".format(it.rate * 100) } ?: "—"} | " +
+                    "${r.cleanedWer?.let { "%.1f %%".format(it.rate * 100) } ?: "—"} |")
+            }
+        }
         appendLine()
         appendLine("## Transcriptions")
         usedClips.forEachIndexed { i, clip ->
@@ -56,6 +67,9 @@ object BenchReport {
                 val runs = if (c.runsMs.size > 1) " · runs ${c.runsMs.joinToString("/")}" else ""
                 val segs = if (c.segments > 1) " · ${c.segments} seg." else ""
                 appendLine("- **${r.label}** (${c.medianMs} ms$enc$runs$segs$wer) : ${c.text}")
+                c.cleanedText?.let { t ->
+                    appendLine("  - ✦ IA (${c.cleanMs} ms${c.cleanedWer?.let { w -> " · WER %.0f %%".format(w.rate * 100) } ?: ""}) : $t")
+                }
             }
         }
     }

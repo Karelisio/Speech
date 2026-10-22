@@ -74,6 +74,8 @@ class DictationService : Service() {
         ) runCatching { app.recorder.prepare() }
         // Modèle chargé une fois et gardé en mémoire tant que le service tourne.
         scope.launch { app.dictationConfig()?.let { runCatching { app.engines.warmUp(it) } } }
+        // Idem pour le nettoyage IA : modèle chargé et prompt système déjà en cache KV.
+        if (app.cleaningActive()) app.cleaners.warmUpAsync(app.cleanerModelId()!!, app.prefs.llmThreads)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {

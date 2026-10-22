@@ -46,6 +46,19 @@ Cible : Honor Magic7 Pro (Snapdragon 8 Elite), `arm64-v8a` uniquement, minSdk 29
   segments aux pauses (latence = dernier segment : simulation de l'étape 5).
 - Bulle : apparition « pop » avec rebond, disparition en fondu contracté.
 
+## État — étape 4
+
+- **llama.cpp** (sous-module épinglé b11345) dans un module Android séparé `:llm` (son ggml
+  et celui de whisper.cpp ont les mêmes cibles CMake ; deux `.so`, symboles masqués).
+- `TextCleaner` / `LlamaCleaner` : Qwen 2.5 1.5B Instruct Q4_0 (défaut) ou 3B, génération
+  gloutonne, limite = 1,5 × tokens d'entrée + 16 ; prompt système (règles + exemples) évalué
+  une fois et gardé dans le cache KV (préfixe commun réutilisé à chaque dictée), préchargé au
+  démarrage du service et au début de chaque enregistrement.
+- Garde-fou : sortie vide ou > 1,5 × l'entrée → transcription brute.
+- Bascule : Réglages → Nettoyage par IA, ou double tap sur la bulle (étincelle ✦ si actif).
+  L'appui long reste « maintenir pour parler ».
+- Temps de nettoyage affiché sur l'accueil, journalisé, et mesuré au benchmark (WER avant/après).
+
 ## Moteur par défaut (benchmark étape 1, Magic7 Pro)
 
 | Config | 10 s d'audio → texte | WER |

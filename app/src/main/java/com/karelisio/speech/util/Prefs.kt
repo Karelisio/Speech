@@ -92,6 +92,19 @@ class Prefs(context: Context) {
         get() = runCatching { VadMode.valueOf(sp.getString("vad_mode", null)!!) }.getOrDefault(VadMode.TRIM)
         set(v) = sp.edit { putString("vad_mode", v.name) }
 
+    /** Nettoyage IA demandé (effectif seulement si un modèle de langage est téléchargé). */
+    var cleaningEnabled: Boolean
+        get() = sp.getBoolean("cleaning", true)
+        set(v) = sp.edit { putBoolean("cleaning", v) }
+
+    var activeLlmId: String?
+        get() = sp.getString("active_llm", null)
+        set(v) = sp.edit { putString("active_llm", v) }
+
+    var llmThreads: Int
+        get() = sp.getInt("llm_threads", DEFAULT_THREADS)
+        set(v) = sp.edit { putInt("llm_threads", v) }
+
     fun wasAsked(permission: String) = sp.getBoolean("asked_$permission", false)
     fun markAsked(permission: String) = sp.edit { putBoolean("asked_$permission", true) }
 

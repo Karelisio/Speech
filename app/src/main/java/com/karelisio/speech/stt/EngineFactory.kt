@@ -13,7 +13,7 @@ object EngineFactory {
         return when (info.engine) {
             EngineKind.WHISPER -> WhisperEngine(File(dir, info.files.first().path), config)
             EngineKind.PARAKEET -> SherpaParakeetEngine(dir, config)
-            EngineKind.VAD -> error("${info.name} n'est pas un modèle de reconnaissance")
+            EngineKind.VAD, EngineKind.LLM -> error("${info.name} n'est pas un modèle de reconnaissance")
         }
     }
 }

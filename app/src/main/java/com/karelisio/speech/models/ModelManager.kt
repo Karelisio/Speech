@@ -68,6 +68,9 @@ class ModelManager(private val context: Context, private val scope: CoroutineSco
 
     val vadModel: ModelInfo? get() = catalog.firstOrNull { it.engine == EngineKind.VAD }
 
+    /** Modèles de langage (nettoyage) prêts. */
+    fun readyLlms() = catalog.filter { it.engine == EngineKind.LLM && isReady(it.id) }
+
     /** Le VAD (643 Ko) accompagne tout modèle de reconnaissance ; à appeler depuis le premier plan. */
     fun ensureVad() {
         val vad = vadModel ?: return

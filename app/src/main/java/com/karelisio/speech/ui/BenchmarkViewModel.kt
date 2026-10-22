@@ -30,6 +30,7 @@ data class BenchUi(
     val compareWhisperCtx: Boolean = false,
     val repetitions: Int = 1,
     val modes: Set<VadMode> = setOf(VadMode.OFF, VadMode.TRIM, VadMode.SEGMENTS),
+    val clean: Boolean = false,
     val running: Boolean = false,
     val progressText: String = "",
     val progress: Float = 0f,
@@ -70,6 +71,8 @@ class BenchmarkViewModel(application: Application) : AndroidViewModel(applicatio
     fun toggleMode(m: VadMode) = _ui.update {
         it.copy(modes = if (m in it.modes && it.modes.size > 1) it.modes - m else it.modes + m)
     }
+    fun setClean(v: Boolean) = _ui.update { it.copy(clean = v) }
+    val llmReady: Boolean get() = app.cleanerModelId() != null
     val vadReady: Boolean get() = app.models.vadModel?.let { app.models.isReady(it.id) } == true
 
     fun plannedConfigs(): List<EngineConfig> {
@@ -99,9 +102,12 @@ class BenchmarkViewModel(application: Application) : AndroidViewModel(applicatio
             AppLog.i("Bench", "début : ${configs.size} configs × ${clipList.size} clips")
             app.engines.release() // mesures RAM propres : aucun autre modèle chargé
             try {
+                val llm = app.cleanerModelId()?.takeIf { _ui.value.clean }
+                val threads = app.prefs.llmThreads
                 runner.run(
                     plan,
                     app.vad(),
+                    llm?.let { id -> { text: String -> app.cleaners.clean(id, threads, text) } },
                     onProgress = { msg, p -> _ui.update { it.copy(progressText = msg, progress = p) } },
                     onResult = { r -> _ui.update { it.copy(results = it.results + r) } },
                 )

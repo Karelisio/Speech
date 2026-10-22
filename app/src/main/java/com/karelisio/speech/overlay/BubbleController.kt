@@ -128,6 +128,7 @@ class BubbleController(
 
     fun setState(state: State) { bubble.state = state }
     fun setLevel(level: Float) { bubble.level = level }
+    fun setCleaning(on: Boolean) { bubble.cleaning = on }
 
     fun applyAppearance(sizeDp: Int, opacity: Float) {
         if (isShown) bubble.alpha = opacity

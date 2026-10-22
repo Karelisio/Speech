@@ -37,6 +37,13 @@ class BubbleView(context: Context, diameterPx: Int) : View(context) {
             if (state == State.RECORDING) invalidate()
         }
 
+    /** Petite étincelle en haut à droite quand le nettoyage IA est actif. */
+    var cleaning: Boolean = false
+        set(v) { if (field != v) { field = v; invalidate() } }
+
+    private val sparkFill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE }
+    private val sparkPath = android.graphics.Path()
+
     private val accent = if (Build.VERSION.SDK_INT >= 31) context.getColor(android.R.color.system_accent1_500) else Color.rgb(81, 68, 211)
     private val accent2 = if (Build.VERSION.SDK_INT >= 31) context.getColor(android.R.color.system_accent3_500) else Color.rgb(0, 137, 127)
     private val recording = Color.rgb(229, 72, 77)
@@ -103,6 +110,24 @@ class BubbleView(context: Context, diameterPx: Int) : View(context) {
             icon.setBounds((cx - s).toInt(), (cy - s).toInt(), (cx + s).toInt(), (cy + s).toInt())
             icon.draw(canvas)
         }
+        if (cleaning) drawSpark(canvas, cx + r * 0.72f, cy - r * 0.72f, r * 0.34f, c2)
+    }
+
+    /** Étoile à quatre branches sur une pastille blanche. */
+    private fun drawSpark(canvas: Canvas, x: Float, y: Float, size: Float, color: Int) {
+        canvas.drawCircle(x, y, size, sparkFill)
+        val k = size * 0.62f
+        val w = k * 0.28f
+        sparkPath.reset()
+        sparkPath.moveTo(x, y - k)
+        sparkPath.quadTo(x + w, y - w, x + k, y)
+        sparkPath.quadTo(x + w, y + w, x, y + k)
+        sparkPath.quadTo(x - w, y + w, x - k, y)
+        sparkPath.quadTo(x - w, y - w, x, y - k)
+        sparkPath.close()
+        ring.color = color
+        ring.alpha = 255
+        canvas.drawPath(sparkPath, ring)
     }
 
     override fun onDetachedFromWindow() {

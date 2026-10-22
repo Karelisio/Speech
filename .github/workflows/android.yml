@@ -54,7 +54,7 @@ jobs:
       - name: ccache
         uses: hendrikmuhs/ccache-action@v1.2
         with:
-          key: android-arm64-${{ hashFiles('.gitmodules', 'app/src/main/cpp/CMakeLists.txt') }}
+          key: android-arm64-${{ hashFiles('.gitmodules', 'app/src/main/cpp/CMakeLists.txt', 'llm/src/main/cpp/CMakeLists.txt') }}
           max-size: 2G
 
       - name: Keystore de release

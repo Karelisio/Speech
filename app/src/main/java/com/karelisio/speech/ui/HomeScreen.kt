@@ -76,6 +76,8 @@ data class HomeStatus(
     val threads: Int,
     val captureLabel: String,
     val modelLoaded: Boolean,
+    /** Nom court du modèle de nettoyage IA actif (null : nettoyage désactivé ou indisponible). */
+    val cleaner: String? = null,
 )
 
 @Composable
@@ -93,6 +95,7 @@ fun HomeScreen(
     val modelStatus by app.models.status.collectAsState()
     val enabled by app.bubble.enabled.collectAsState()
     val paused by app.bubble.paused.collectAsState()
+    val cleaningOn by app.cleaning.collectAsState()
     val withMic = rememberWithMicPermission()
     var showSave by remember { mutableStateOf(false) }
 
@@ -107,6 +110,7 @@ fun HomeScreen(
         threads = cfg?.threads ?: 0,
         captureLabel = if (app.prefs.captureRate == 48_000) "48 kHz" else "16 kHz",
         modelLoaded = cfg != null && app.engines.loadedConfig == cfg,
+        cleaner = app.cleanerModelId()?.takeIf { cleaningOn }?.let { app.models.find(it)?.shortName?.removeSuffix(" Instruct") },
     )
     HomeContent(
         modifier = modifier,
@@ -200,6 +204,7 @@ fun HomeContent(
                     HeroChip(status.modelName ?: "Aucun modèle")
                     if (status.modelName != null) HeroChip("${status.threads} threads")
                     HeroChip(status.captureLabel)
+                    status.cleaner?.let { HeroChip("✦ $it") }
                     if (status.modelLoaded) HeroChip("En mémoire ✓")
                 }
             }
@@ -244,13 +249,29 @@ fun HomeContent(
                     SelectionContainer {
                         Text(ui.text.ifEmpty { "(rien entendu)" }, style = MaterialTheme.typography.bodyLarge)
                     }
+                    ui.raw?.let { raw ->
+                        Text(
+                            "Brut : $raw",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    ui.cleanNote?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
                     val audio = ui.audioMs ?: 0
                     val lat = ui.latencyMs ?: 0
-                    StatRow(
-                        "latence" to "$lat ms",
-                        "audio" to "%.1f s".format(audio / 1000.0),
-                        "temps réel" to if (audio > 0) "×%.2f".format(lat.toDouble() / audio) else "—",
-                    )
+                    if (ui.cleanMs != null) {
+                        StatRow(
+                            "latence totale" to "$lat ms",
+                            "reconnaissance" to "${ui.sttMs ?: 0} ms",
+                            "nettoyage IA" to "${ui.cleanMs} ms",
+                        )
+                    } else {
+                        StatRow(
+                            "latence" to "$lat ms",
+                            "audio" to "%.1f s".format(audio / 1000.0),
+                            "temps réel" to if (audio > 0) "×%.2f".format(lat.toDouble() / audio) else "—",
+                        )
+                    }
                     captureSummary?.let {
                         Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }

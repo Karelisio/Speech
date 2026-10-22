@@ -11,6 +11,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityManager
 import android.view.accessibility.AccessibilityNodeInfo
@@ -38,6 +39,7 @@ class SpeechAccessibilityService : AccessibilityService(), BubbleController.List
     companion object {
         private const val TAG = "Access"
         private const val SURROUNDING = 200
+        private const val DOUBLE_TAP_MS = 350L
 
         fun isEnabled(context: Context): Boolean {
             val me = ComponentName(context, SpeechAccessibilityService::class.java)
@@ -76,6 +78,10 @@ class SpeechAccessibilityService : AccessibilityService(), BubbleController.List
             }
         }
         scope.launch { app.controller.level.collect { bubble.setLevel(it) } }
+        scope.launch {
+            combine(app.cleaning, app.models.status) { on, _ -> on && app.cleanerModelId() != null }
+                .collect { bubble.setCleaning(it) }
+        }
         scope.launch {
             combine(app.bubble.enabled, app.bubble.paused) { e, p -> e to p }.collect { updateVisibility() }
         }
@@ -157,8 +163,21 @@ class SpeechAccessibilityService : AccessibilityService(), BubbleController.List
             Toast.makeText(this, "Speech : aucun modèle téléchargé", Toast.LENGTH_SHORT).show()
             return
         }
-        if (app.controller.state.value == State.IDLE && !ensureMicService()) return
-        app.controller.toggle()
+        // Double tap (2ᵉ tap juste après le démarrage) : bascule du nettoyage IA, sans dicter.
+        val c = app.controller
+        if (c.state.value == State.RECORDING && SystemClock.elapsedRealtime() - c.recordingStartedAt < DOUBLE_TAP_MS) {
+            c.cancel()
+            val on = c.toggleCleaning()
+            val msg = when {
+                on && app.cleanerModelId() == null -> "Nettoyage IA activé (aucun modèle téléchargé)"
+                on -> "Nettoyage IA activé"
+                else -> "Nettoyage IA désactivé"
+            }
+            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (c.state.value == State.IDLE && !ensureMicService()) return
+        c.toggle()
     }
 
     override fun onHoldStart() {
