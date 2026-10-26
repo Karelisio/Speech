@@ -81,7 +81,8 @@ object BenchReport {
                 val segs = if (c.segments > 1) " · ${c.segments} seg." else ""
                 appendLine("- **${r.label}** (${c.medianMs} ms$enc$runs$segs$wer) : ${c.text}")
                 c.cleanedText?.let { t ->
-                    appendLine("  - ✦ IA (${c.cleanMs} ms${c.cleanedWer?.let { w -> " · WER %.0f %%".format(w.rate * 100) } ?: ""}) : $t")
+                    appendLine("  - ✦ IA (${c.cleanMs} ms${c.cleanedWer?.let { w -> " · WER %.0f %%".format(w.rate * 100) } ?: ""}" +
+                        "${c.cleanNote?.let { n -> " · $n" } ?: ""}) : $t")
                 }
             }
         }

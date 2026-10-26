@@ -22,7 +22,7 @@ hors téléchargement initial des modèles. Cible : Honor Magic7 Pro (Snapdragon
 | Insertion | Au curseur, sans écraser l'existant : canal de saisie du clavier (Android 13+), sinon `ACTION_SET_TEXT` + `SET_SELECTION`, sinon presse-papiers + `PASTE`. |
 | Reconnaissance | Parakeet TDT 0.6B v3 int8 (sherpa-onnx, défaut), Whisper large-v3-turbo q8_0 / small q8_0 (whisper.cpp). |
 | VAD | Silero : silences coupés (défaut) ou transcription **en direct** à chaque pause. |
-| Nettoyage IA | Qwen 2.5 1.5B (défaut) / 3B Instruct Q4_0 via llama.cpp, CPU ou GPU OpenCL. Prompt système en cache KV, début du texte pré-calculé pendant l'enregistrement, garde-fou 1,5 × l'entrée. |
+| Nettoyage IA | Qwen 2.5 1.5B (défaut) / 3B Instruct Q4_0 via llama.cpp, GPU OpenCL (défaut) ou CPU. Prompt système en cache KV, début du texte pré-calculé pendant l'enregistrement, décodage spéculatif par recopie de la dictée. Garde-fous : 1,5 × l'entrée, aucun mot ajouté ou remplacé, aucune négation retirée. |
 | Dictionnaire | Prompt Whisper, prompt du nettoyage, correction des variantes proches. |
 | Historique | 50 dernières dictées, brut + final, copie en un tap. |
 | Benchmark | Modèles × threads × modes VAD × accélérateurs, latence après stop, RTF, RAM, WER avant/après IA, endurance 100 dictées, export Markdown. |
@@ -35,6 +35,18 @@ hors téléchargement initial des modèles. Cible : Honor Magic7 Pro (Snapdragon
 | Parakeet TDT 0.6B v3 int8, 4 threads | 0,69 s | 9,4 % |
 | Whisper large-v3-turbo q8_0, 6 threads | 17,8 s | 9,4 % |
 | Whisper small q8_0, ctx dynamique | 0,9 s | 18 % |
+
+Benchmark 1.0.2 (5 clips, 48 kHz, médiane de 3) :
+
+| Parakeet | 10 s → texte | WER |
+|---|---|---|
+| 4 threads, CPU, silences coupés (défaut) | 0,72 s | 10,1 % |
+| 4 threads, bloc entier | 0,74 s | 11,4 % |
+| 2 / 6 threads | 0,92 / 0,84 s | 10,1 % |
+| NNAPI / XNNPACK (4 threads) | 0,75 / 0,73 s | 10,1 % |
+
+NNAPI et XNNPACK n'apportent rien : CPU gardé. Nettoyage Qwen 1.5B : 1,44 s en moyenne sur GPU
+contre 2,30 s sur CPU (GPU par défaut). Endurance 100 dictées + nettoyage : dérive de 15 Mo.
 
 Capture micro : 48 kHz + décimation Speech (le rééchantillonnage 16 kHz du téléphone duplique
 ~18 % des échantillons).

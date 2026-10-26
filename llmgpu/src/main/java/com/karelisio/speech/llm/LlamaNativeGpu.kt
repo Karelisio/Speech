@@ -24,8 +24,8 @@ object LlamaNativeGpu : LlamaApi {
     override fun abort(ptr: Long) = nAbort(ptr)
     override fun warm(ptr: Long, system: String) = nWarm(ptr, system)
     override fun prefill(ptr: Long, system: String, user: String) = nPrefill(ptr, system, user)
-    override fun complete(ptr: Long, system: String, user: String, maxRatio: Float, extra: Int) =
-        nComplete(ptr, system, user, maxRatio, extra)
+    override fun complete(ptr: Long, system: String, user: String, maxRatio: Float, extra: Int, draftMax: Int) =
+        nComplete(ptr, system, user, maxRatio, extra, draftMax)
     override fun lastStats(ptr: Long) = nLastStats(ptr)
     override fun systemInfo() = if (available) nSystemInfo() else "indisponible : $loadError"
 
@@ -34,7 +34,7 @@ object LlamaNativeGpu : LlamaApi {
     @JvmStatic private external fun nAbort(ptr: Long)
     @JvmStatic private external fun nWarm(ptr: Long, system: String): Boolean
     @JvmStatic private external fun nPrefill(ptr: Long, system: String, user: String): Boolean
-    @JvmStatic private external fun nComplete(ptr: Long, system: String, user: String, maxRatio: Float, extra: Int): ByteArray?
+    @JvmStatic private external fun nComplete(ptr: Long, system: String, user: String, maxRatio: Float, extra: Int, draftMax: Int): ByteArray?
     @JvmStatic private external fun nLastStats(ptr: Long): DoubleArray
     @JvmStatic private external fun nSystemInfo(): String
 }

@@ -120,10 +120,15 @@ class Prefs(context: Context) {
         get() = sp.getString("stt_provider", "cpu") ?: "cpu"
         set(v) = sp.edit { putString("stt_provider", v) }
 
-    /** Nettoyage IA sur le GPU (OpenCL Adreno) plutôt que le CPU : à mesurer. */
+    /** Nettoyage IA sur le GPU (OpenCL Adreno) : mesuré 1,4 s contre 2,3 s sur CPU (Magic7 Pro). */
     var llmGpu: Boolean
-        get() = sp.getBoolean("llm_gpu", false)
+        get() = sp.getBoolean("llm_gpu", true)
         set(v) = sp.edit { putBoolean("llm_gpu", v) }
+
+    /** Décodage spéculatif du nettoyage : tokens recopiés de la dictée vérifiés par passage (0 = off). */
+    var llmDraft: Int
+        get() = sp.getInt("llm_draft", com.karelisio.speech.clean.LlamaCleaner.DEFAULT_DRAFT)
+        set(v) = sp.edit { putInt("llm_draft", v) }
 
     fun wasAsked(permission: String) = sp.getBoolean("asked_$permission", false)
     fun markAsked(permission: String) = sp.edit { putBoolean("asked_$permission", true) }

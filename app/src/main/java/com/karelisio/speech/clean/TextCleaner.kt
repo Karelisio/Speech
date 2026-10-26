@@ -12,6 +12,9 @@ data class CleanResult(
     val reusedTokens: Int = 0,
     val promptTokens: Int = 0,
     val genTokens: Int = 0,
+    /** Décodage spéculatif : tokens recopiés de l'entrée proposés / gardés par le modèle. */
+    val draftedTokens: Int = 0,
+    val acceptedTokens: Int = 0,
     val reason: String? = null,
 )
 

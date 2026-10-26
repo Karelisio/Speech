@@ -27,6 +27,29 @@ jobs:
           name: models-resolved
           path: models.resolved.json
 
+  llm:
+    name: Nettoyage IA — décodage spéculatif (PC)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - name: Sous-module llama.cpp
+        run: git submodule update --init third_party/llama.cpp
+      - uses: actions/cache@v4
+        with:
+          path: ~/models
+          key: qwen2.5-1.5b-instruct-q4_0-91cad511
+      - name: Modèle Qwen 2.5 1.5B Q4_0 (celui de l'app)
+        run: |
+          mkdir -p ~/models
+          f=~/models/qwen.gguf
+          [ -f "$f" ] || curl -fsSL -o "$f" "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/91cad51170dc346986eccefdc2dd33a9da36ead9/qwen2.5-1.5b-instruct-q4_0.gguf"
+          echo "dcd819ff094852c38faba6873d8ff0c9d51eadb2844539e52042ae5d647bbfdb  $f" | sha256sum -c
+      - name: Même texte qu'en glouton, et gain de vitesse
+        run: |
+          set -o pipefail
+          scripts/llm_check/run.sh ~/models/qwen.gguf | tee -a "$GITHUB_STEP_SUMMARY"
+
   build:
     name: APK arm64-v8a
     runs-on: ubuntu-latest

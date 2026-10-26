@@ -110,7 +110,8 @@ class DictationPipeline(private val app: SpeechApp, private val scope: Coroutine
                 "${t.segments} segment(s), VAD ${t.vadMs} ms)" +
                 (clean?.let {
                     ", nettoyage ${it.totalMs} ms (${it.reusedTokens} tok en cache, ${it.promptTokens} évalués, " +
-                        "${it.genTokens} générés)" + (it.reason?.let { why -> " — brut conservé : $why" } ?: "")
+                        "${it.genTokens} générés, brouillon ${it.acceptedTokens}/${it.draftedTokens})" +
+                        (it.reason?.let { why -> " — brut conservé : $why" } ?: "")
                 } ?: "") + ", total ${result.totalMs} ms" + if (!t.speech) " — aucune parole" else "",
         )
         // Écriture de l'historique en tâche de fond : l'insertion n'attend pas le disque.

@@ -38,7 +38,7 @@ struct Llm {
     std::vector<llama_token> cached;
     std::atomic<bool> abort{false};
     // Statistiques du dernier appel.
-    int reused = 0, prefilled = 0, generated = 0;
+    int reused = 0, prefilled = 0, generated = 0, drafted = 0, accepted = 0;
     double prefill_ms = 0, gen_ms = 0;
 };
 
@@ -101,6 +101,41 @@ bool prefill(Llm *l, const std::vector<llama_token> &tokens) {
         l->cached.insert(l->cached.end(), tokens.begin() + i, tokens.begin() + i + n);
     }
     return true;
+}
+
+/**
+ * Brouillon « prompt lookup » : le texte nettoyé recopie presque mot pour mot la dictée, donc
+ * ce qui suit, dans l'entrée, la fin de ce qui vient d'être généré a toutes les chances d'être
+ * la suite. Cherche les 3, 2 puis 1 derniers tokens générés dans `src` (de préférence après
+ * `cursor`, la position du brouillon précédent) et renvoie jusqu'à `k` tokens qui les suivent.
+ */
+std::vector<llama_token> lookup_draft(
+        const std::vector<llama_token> &src, const std::vector<llama_token> &hist, size_t &cursor, int k) {
+    for (int n = std::min<int>(3, (int) hist.size()); n >= 1 && k > 0; --n) {
+        const llama_token *pat = hist.data() + hist.size() - n;
+        long ahead = -1, behind = -1;
+        for (size_t i = 0; i + n < src.size(); ++i) {
+            if (!std::equal(pat, pat + n, src.begin() + (long) i)) continue;
+            if (i + n >= cursor) { ahead = (long) i; break; }
+            behind = (long) i;
+        }
+        long at = ahead >= 0 ? ahead : behind;
+        if (at < 0) continue;
+        size_t from = (size_t) at + n;
+        size_t to = std::min(src.size(), from + (size_t) k);
+        cursor = from;
+        return {src.begin() + (long) from, src.begin() + (long) to};
+    }
+    return {};
+}
+
+void batch_add(llama_batch &b, llama_token t, llama_pos pos) {
+    b.token[b.n_tokens] = t;
+    b.pos[b.n_tokens] = pos;
+    b.n_seq_id[b.n_tokens] = 1;
+    b.seq_id[b.n_tokens][0] = 0;
+    b.logits[b.n_tokens] = true;
+    b.n_tokens++;
 }
 
 } // namespace
@@ -182,10 +217,14 @@ JNI_FN(nWarm)(JNIEnv *env, jobject, jlong ptr, jstring jsystem) {
 /**
  * Réponse de l'assistant à (système, utilisateur), génération gloutonne limitée à
  * `max_ratio` × tokens d'entrée + `extra`. Renvoie l'UTF-8 brut (null en cas d'échec).
+ *
+ * Décodage spéculatif sans modèle auxiliaire (`draft_max` > 0) : à chaque pas, jusqu'à
+ * `draft_max` tokens recopiés de l'entrée sont vérifiés en un seul passage ; on garde ceux que
+ * le modèle aurait choisis lui-même. Le texte produit est celui du décodage glouton normal.
  */
 JNIEXPORT jbyteArray JNICALL
 JNI_FN(nComplete)(
-        JNIEnv *env, jobject, jlong ptr, jstring jsystem, jstring juser, jfloat max_ratio, jint extra) {
+        JNIEnv *env, jobject, jlong ptr, jstring jsystem, jstring juser, jfloat max_ratio, jint extra, jint draft_max) {
     auto *l = reinterpret_cast<Llm *>(ptr);
     if (!l) return nullptr;
     l->abort.store(false);
@@ -193,10 +232,11 @@ JNI_FN(nComplete)(
     std::string prompt = format(l, jstr(env, jsystem), &user);
     if (prompt.empty()) return nullptr;
     std::vector<llama_token> tokens = tokenize(l, prompt, true);
-    const int user_tokens = (int) tokenize(l, user, false).size();
-    int max_new = (int) (user_tokens * max_ratio) + extra;
+    const std::vector<llama_token> src = tokenize(l, user, false);
+    int max_new = (int) ((float) src.size() * max_ratio) + extra;
+    const int n_draft = std::clamp<int>(draft_max, 0, 16);
     const int n_ctx = (int) llama_n_ctx(l->ctx);
-    if ((int) tokens.size() + max_new > n_ctx) max_new = n_ctx - (int) tokens.size();
+    if ((int) tokens.size() + max_new + n_draft > n_ctx) max_new = n_ctx - (int) tokens.size() - n_draft;
     if (max_new <= 0) return nullptr;
 
     auto t0 = Clock::now();
@@ -207,16 +247,53 @@ JNI_FN(nComplete)(
     llama_sampler_reset(l->sampler);
     std::string out;
     char piece[256];
-    int g = 0;
-    for (; g < max_new; ++g) {
-        llama_token tok = llama_sampler_sample(l->sampler, l->ctx, -1);
-        if (llama_vocab_is_eog(l->vocab, tok)) break;
-        int n = llama_token_to_piece(l->vocab, tok, piece, sizeof(piece), 0, false);
+    std::vector<llama_token> hist;
+    auto emit = [&](llama_token t) {
+        int n = llama_token_to_piece(l->vocab, t, piece, sizeof(piece), 0, false);
         if (n > 0) out.append(piece, n);
-        llama_batch b = llama_batch_get_one(&tok, 1);
-        if (llama_decode(l->ctx, b) != 0) break;
+        hist.push_back(t);
+    };
+    llama_batch batch = llama_batch_init(n_draft + 1, 0, 1);
+    llama_memory_t mem = llama_get_memory(l->ctx);
+    size_t cursor = 0;
+    int g = 0;
+    l->drafted = 0;
+    l->accepted = 0;
+    // `tok` : prochain token choisi par le modèle, pas encore dans le cache KV.
+    llama_token tok = llama_sampler_sample(l->sampler, l->ctx, -1);
+    while (g < max_new && !llama_vocab_is_eog(l->vocab, tok)) {
+        emit(tok);
+        if (++g >= max_new) break;
+        std::vector<llama_token> draft;
+        if (n_draft > 0) draft = lookup_draft(src, hist, cursor, std::min(n_draft, max_new - g));
+        const auto pos = (llama_pos) l->cached.size();
+        batch.n_tokens = 0;
+        batch_add(batch, tok, pos);
+        for (size_t j = 0; j < draft.size(); ++j) batch_add(batch, draft[j], pos + 1 + (llama_pos) j);
+        if (llama_decode(l->ctx, batch) != 0) {
+            // Interrompu ou en échec : état du cache incertain, il sera recalculé au prochain appel.
+            l->cached.clear();
+            llama_memory_clear(mem, true);
+            break;
+        }
         l->cached.push_back(tok);
+        l->drafted += (int) draft.size();
+        // Vérification : le brouillon est gardé tant qu'il coïncide avec le choix du modèle.
+        size_t j = 0;
+        llama_token next = llama_sampler_sample(l->sampler, l->ctx, 0);
+        while (j < draft.size() && next == draft[j] && g < max_new) {
+            emit(draft[j]);
+            l->cached.push_back(draft[j]);
+            ++g;
+            ++j;
+            next = llama_sampler_sample(l->sampler, l->ctx, (int32_t) j);
+        }
+        l->accepted += (int) j;
+        // Les tokens refusés sortent du cache KV.
+        if (j < draft.size()) llama_memory_seq_rm(mem, 0, (llama_pos) l->cached.size(), -1);
+        tok = next;
     }
+    llama_batch_free(batch);
     l->generated = g;
     l->gen_ms = ms_since(t1);
 
@@ -245,14 +322,18 @@ JNI_FN(nPrefill)(JNIEnv *env, jobject, jlong ptr, jstring jsystem, jstring juser
     return ok ? JNI_TRUE : JNI_FALSE;
 }
 
-/** [tokens réutilisés, tokens évalués, tokens générés, ms prompt, ms génération] du dernier appel. */
+/**
+ * [tokens réutilisés, tokens évalués, tokens générés, ms prompt, ms génération,
+ * tokens de brouillon proposés, tokens de brouillon acceptés] du dernier appel.
+ */
 JNIEXPORT jdoubleArray JNICALL
 JNI_FN(nLastStats)(JNIEnv *env, jobject, jlong ptr) {
     auto *l = reinterpret_cast<Llm *>(ptr);
-    jdoubleArray arr = env->NewDoubleArray(5);
+    jdoubleArray arr = env->NewDoubleArray(7);
     if (l) {
-        jdouble v[5] = {(double) l->reused, (double) l->prefilled, (double) l->generated, l->prefill_ms, l->gen_ms};
-        env->SetDoubleArrayRegion(arr, 0, 5, v);
+        jdouble v[7] = {(double) l->reused, (double) l->prefilled, (double) l->generated, l->prefill_ms, l->gen_ms,
+                        (double) l->drafted, (double) l->accepted};
+        env->SetDoubleArrayRegion(arr, 0, 7, v);
     }
     return arr;
 }

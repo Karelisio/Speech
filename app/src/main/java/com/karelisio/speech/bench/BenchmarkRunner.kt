@@ -40,6 +40,8 @@ data class ClipResult(
     val cleanMs: Long? = null,
     val cleanedText: String? = null,
     val cleanedWer: Wer.Score? = null,
+    /** Détail du nettoyage : tokens générés, brouillon accepté, raison d'un rejet. */
+    val cleanNote: String? = null,
 ) {
     val medianMs: Long get() = runsMs.sorted()[runsMs.size / 2]
 }
@@ -182,6 +184,10 @@ class BenchmarkRunner(
                             totalMs = totals.sorted()[totals.size / 2], vadMs = r.vadMs, segments = r.segments,
                             cleanMs = c?.totalMs, cleanedText = c?.text,
                             cleanedWer = c?.let { cc -> clip.reference?.let { Wer.score(it, cc.text) } },
+                            cleanNote = c?.let { cc ->
+                                "${cc.genTokens} tok en ${cc.genMs.toLong()} ms, brouillon ${cc.acceptedTokens}/${cc.draftedTokens}" +
+                                    (cc.reason?.let { " — brut gardé : $it" } ?: "")
+                            },
                         )
                     }
                     base.copy(mode = mode, loadMs = loadMs, rssLoadedMb = rssLoaded, clips = clipResults)

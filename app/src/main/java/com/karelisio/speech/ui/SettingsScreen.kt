@@ -19,6 +19,7 @@ import androidx.compose.material.icons.automirrored.rounded.MenuBook
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.RecordVoiceOver
 import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.DeveloperBoard
 import androidx.compose.material.icons.rounded.Psychology
@@ -205,6 +206,16 @@ fun SettingsScreen(modifier: Modifier = Modifier, onOpenPermissions: () -> Unit,
                 ) {
                     prefs.llmGpu = it
                     app.cleaners.useGpu = it
+                    changed()
+                }
+                GroupDivider()
+                SegmentedRow(
+                    Icons.Rounded.Bolt, "Décodage rapide",
+                    "Recopie la dictée par blocs vérifiés : même texte, moins d'attente",
+                    listOf(0 to "Off", 4 to "4", 8 to "8"), prefs.llmDraft,
+                ) {
+                    prefs.llmDraft = it
+                    app.cleaners.draftMax = it
                     changed()
                 }
             }

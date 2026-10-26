@@ -29,6 +29,10 @@ class CleanerHolder(private val models: ModelManager, private val scope: Corouti
     /** Accélérateur réellement utilisé par le modèle chargé. */
     val backendName: String? get() = (cleaner as? LlamaCleaner)?.api?.name
 
+    /** Décodage spéculatif (Réglages) : tokens de brouillon par passage, 0 = désactivé. */
+    @Volatile
+    var draftMax: Int = LlamaCleaner.DEFAULT_DRAFT
+
     /** Dictionnaire personnel courant, inclus dans le prompt système. */
     @Volatile
     var terms: List<String> = emptyList()
@@ -63,7 +67,10 @@ class CleanerHolder(private val models: ModelManager, private val scope: Corouti
     suspend fun clean(modelId: String, nThreads: Int, raw: String, terms: List<String> = this.terms): CleanResult =
         mutex.withLock {
             withContext(Dispatchers.Default) {
-                obtain(modelId, nThreads).apply { system = CleanPrompt.build(terms) }.clean(raw)
+                obtain(modelId, nThreads).apply {
+                    system = CleanPrompt.build(terms)
+                    (this as? LlamaCleaner)?.draftMax = draftMax
+                }.clean(raw)
             }
         }
 

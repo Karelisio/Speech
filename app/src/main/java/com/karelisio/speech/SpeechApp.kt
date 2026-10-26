@@ -85,6 +85,7 @@ class SpeechApp : Application() {
         dictionary = Dictionary.parse(prefs.dictionary)
         cleaners.terms = dictionary.terms
         cleaners.useGpu = prefs.llmGpu
+        cleaners.draftMax = prefs.llmDraft
         pipeline = DictationPipeline(this, appScope)
         controller = DictationController(this)
         AppLog.i("App", "démarrage\n" + DeviceInfo.summary(this))
