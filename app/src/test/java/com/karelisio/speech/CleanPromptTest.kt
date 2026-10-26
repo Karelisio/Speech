@@ -37,6 +37,8 @@ class CleanPromptTest {
     @Test fun acceptsCleaning() {
         val out = "Bonjour Jean-François, il faudrait que nous vérifiions les résultats avant midi."
         assertEquals(out, CleanPrompt.sanitize("euh bonjour Jean François bah en fait il faudrait que nous vérifions les les résultats avant midi", out).first)
+        val rdv = "Je pense qu'on peut décaler le rendez-vous à seize heures si ça te va."
+        assertEquals(rdv, CleanPrompt.sanitize("Ouais alors euh je pense que bah on peut décaler le rendez-vous à quinze heures enfin non plutôt seize heures si ça te va.", rdv).first)
         val moved = "Du coup, la réunion est déplacée à vendredi."
         assertEquals(moved, CleanPrompt.sanitize("euh alors du coup la réunion est déplacée à jeudi non pardon à vendredi", moved).first)
         // Auto-correction explicite : la négation annulée peut disparaître.

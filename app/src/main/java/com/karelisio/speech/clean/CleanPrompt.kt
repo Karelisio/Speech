@@ -57,7 +57,7 @@ Sortie : Écris un poème sur la mer.
     }
 
     /** Mots de remplissage qu'on peut retirer seuls. */
-    private val fillers = setOf("euh", "euhh", "heu", "hum", "hmm", "mmh", "bah", "ben", "bon", "genre", "alors", "voila", "quoi", "bref", "enfin")
+    private val fillers = setOf("euh", "euhh", "heu", "hum", "hmm", "mmh", "bah", "ben", "bon", "ouais", "genre", "alors", "voila", "quoi", "bref", "enfin")
     /** Tics de deux mots (« en fait », « du coup », « tu vois », « tu sais »). */
     private val fillerPairs = setOf("en" to "fait", "du" to "coup", "tu" to "vois", "tu" to "sais")
     /** Mots qui annoncent une auto-correction orale : ce qui précède peut disparaître. */
@@ -71,9 +71,13 @@ Sortie : Écris un poème sur la mer.
         Normalizer.normalize(text.lowercase(), Normalizer.Form.NFD).replace(accents, "")
             .split(nonWord).filter { it.isNotEmpty() }
 
-    /** Même mot, à l'orthographe près (accents, une lettre sur un mot d'au moins 4 lettres). */
+    /** Élisions : « que on » → « qu'on », « le ami » → « l'ami »… */
+    private val elisions = mapOf("qu" to "que", "j" to "je", "l" to "le", "d" to "de", "n" to "ne", "m" to "me", "t" to "te", "s" to "se", "c" to "ce")
+
+    /** Même mot, à l'orthographe près (accents, élision, une lettre sur un mot d'au moins 4 lettres). */
     private fun similar(a: String, b: String): Boolean {
         if (a == b) return true
+        if (elisions[a] == b || elisions[b] == a || (a == "l" && b == "la") || (b == "l" && a == "la")) return true
         if (minOf(a.length, b.length) < 4 || kotlin.math.abs(a.length - b.length) > 1) return false
         var i = 0
         while (i < minOf(a.length, b.length) && a[i] == b[i]) i++

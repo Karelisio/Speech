@@ -22,7 +22,7 @@ hors téléchargement initial des modèles. Cible : Honor Magic7 Pro (Snapdragon
 | Insertion | Au curseur, sans écraser l'existant : canal de saisie du clavier (Android 13+), sinon `ACTION_SET_TEXT` + `SET_SELECTION`, sinon presse-papiers + `PASTE`. |
 | Reconnaissance | Parakeet TDT 0.6B v3 int8 (sherpa-onnx, défaut), Whisper large-v3-turbo q8_0 / small q8_0 (whisper.cpp). |
 | VAD | Silero : silences coupés (défaut) ou transcription **en direct** à chaque pause. |
-| Nettoyage IA | Qwen 2.5 1.5B (défaut) / 3B Instruct Q4_0 via llama.cpp, GPU OpenCL (défaut) ou CPU. Prompt système en cache KV, début du texte pré-calculé pendant l'enregistrement, décodage spéculatif par recopie de la dictée. Garde-fous : 1,5 × l'entrée, aucun mot ajouté ou remplacé, aucune négation retirée. |
+| Nettoyage IA | Qwen 2.5 1.5B (défaut) / 3B Instruct Q4_0 via llama.cpp, GPU OpenCL (défaut) ou CPU. Prompt système en cache KV, début du texte pré-calculé pendant l'enregistrement, décodage spéculatif par recopie de la dictée. Garde-fou : la sortie n'est gardée que si elle retire seulement hésitations, répétitions et mots annulés par une auto-correction (sinon texte brut). |
 | Dictionnaire | Prompt Whisper, prompt du nettoyage, correction des variantes proches. |
 | Historique | 50 dernières dictées, brut + final, copie en un tap. |
 | Benchmark | Modèles × threads × modes VAD × accélérateurs, latence après stop, RTF, RAM, WER avant/après IA, endurance 100 dictées, export Markdown. |
@@ -47,6 +47,10 @@ Benchmark 1.0.2 (5 clips, 48 kHz, médiane de 3) :
 
 NNAPI et XNNPACK n'apportent rien : CPU gardé. Nettoyage Qwen 1.5B : 1,44 s en moyenne sur GPU
 contre 2,30 s sur CPU (GPU par défaut). Endurance 100 dictées + nettoyage : dérive de 15 Mo.
+
+Décodage spéculatif du nettoyage (`scripts/llm_check`, CI sur PC, 13 dictées) : génération ×1,6
+avec Qwen 1.5B et 3B, texte identique au décodage glouton (13/13 avec le 3B ; un écart sur une
+quasi-égalité avec le 1.5B).
 
 Capture micro : 48 kHz + décimation Speech (le rééchantillonnage 16 kHz du téléphone duplique
 ~18 % des échantillons).
