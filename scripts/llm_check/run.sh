@@ -24,4 +24,7 @@ import sys
 s = open(sys.argv[1], encoding="utf-8").read()
 print(s.split('val SYSTEM = """', 1)[1].split('""".trim()', 1)[0].strip(), end="")
 PY
-"$OUT/harness" "$MODEL" "$OUT/system.txt" "$ROOT/scripts/llm_check/inputs.txt" "$(nproc)"
+# Prompts à comparer en plus (fichiers .txt de scripts/llm_check/prompts/, s'il y en a).
+extra=()
+for f in "$ROOT"/scripts/llm_check/prompts/*.txt; do [ -f "$f" ] && extra+=("$f"); done
+"$OUT/harness" "$MODEL" "$ROOT/scripts/llm_check/inputs.txt" "$(nproc)" "$OUT/system.txt" "${extra[@]}"

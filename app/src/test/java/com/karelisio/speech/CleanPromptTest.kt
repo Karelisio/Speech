@@ -30,12 +30,15 @@ class CleanPromptTest {
     @Test fun rejectsDroppedNegation() {
         val (t, why) = CleanPrompt.sanitize("avant qu'ils ne soient publiés", "Avant qu'ils soient publiés.")
         assertNull(t)
-        assertEquals("négation supprimée", why)
+        assertEquals("mot retiré : « ne »", why)
+        assertEquals("mot retiré : « bonjour »", CleanPrompt.sanitize("Bonjour Marie, je t'envoie le compte rendu", "Je t'envoie le compte rendu.").second)
     }
 
     @Test fun acceptsCleaning() {
-        val out = "Bonjour Jean-François, il faudrait que nous vérifiions à midi."
-        assertEquals(out, CleanPrompt.sanitize("euh bonjour Jean François bah il faudrait que nous vérifions à un midi", out).first)
+        val out = "Bonjour Jean-François, il faudrait que nous vérifiions les résultats avant midi."
+        assertEquals(out, CleanPrompt.sanitize("euh bonjour Jean François bah en fait il faudrait que nous vérifions les les résultats avant midi", out).first)
+        val moved = "Du coup, la réunion est déplacée à vendredi."
+        assertEquals(moved, CleanPrompt.sanitize("euh alors du coup la réunion est déplacée à jeudi non pardon à vendredi", moved).first)
         // Auto-correction explicite : la négation annulée peut disparaître.
         assertEquals("Je viens demain.", CleanPrompt.sanitize("je viens pas non pardon je viens demain", "Je viens demain.").first)
     }

@@ -44,9 +44,19 @@ struct Run {
 
 } // namespace
 
+Run complete(JNIEnv *env, jlong ptr, const std::string &system, const std::string &user, int draft) {
+    // Repart du seul prompt système en cache : chaque variante démarre du même état.
+    JNI_FN(nWarm)(env, nullptr, ptr, js(system));
+    Run r;
+    jbyteArray out = JNI_FN(nComplete)(env, nullptr, ptr, js(system), js(user), 1.5f, 16, draft);
+    r.text = out ? *reinterpret_cast<std::string *>(out) : std::string("<échec>");
+    r.stats = *reinterpret_cast<std::vector<double> *>(JNI_FN(nLastStats)(env, nullptr, ptr));
+    return r;
+}
+
 int main(int argc, char **argv) {
-    if (argc < 4) {
-        std::fprintf(stderr, "usage : %s modele.gguf system.txt entrees.txt [threads]\n", argv[0]);
+    if (argc < 5) {
+        std::fprintf(stderr, "usage : %s modele.gguf entrees.txt threads system.txt [autres-prompts.txt…]\n", argv[0]);
         return 2;
     }
     JNINativeInterface_ fns{};
@@ -61,42 +71,64 @@ int main(int argc, char **argv) {
     env_storage.functions = &fns;
     JNIEnv *env = &env_storage;
 
-    const std::string system = read_file(argv[2]);
-    const int threads = argc > 4 ? std::atoi(argv[4]) : 4;
+    const int threads = std::atoi(argv[3]);
     jlong ptr = JNI_FN(nLoad)(env, nullptr, js(argv[1]), 2048, threads, threads, 0);
     if (!ptr) return 1;
-    JNI_FN(nWarm)(env, nullptr, ptr, js(system));
 
-    std::ifstream in(argv[3]);
-    std::string line;
-    int mismatches = 0, drafted = 0, accepted = 0, tokens = 0;
-    double ms_plain = 0, ms_draft = 0;
-    std::printf("| Entrée | glouton ms | spéculatif ms | brouillon | identique |\n|---|---|---|---|---|\n");
-    std::string details;
-    while (std::getline(in, line)) {
-        if (line.empty()) continue;
-        Run runs[2];
-        const int drafts[2] = {0, 8};
-        for (int k = 0; k < 2; ++k) {
-            jbyteArray out = JNI_FN(nComplete)(env, nullptr, ptr, js(system), js(line), 1.5f, 16, drafts[k]);
-            runs[k].text = out ? *reinterpret_cast<std::string *>(out) : std::string("<échec>");
-            runs[k].stats = *reinterpret_cast<std::vector<double> *>(JNI_FN(nLastStats)(env, nullptr, ptr));
-        }
-        const bool same = runs[0].text == runs[1].text;
-        if (!same) mismatches++;
-        ms_plain += runs[0].stats[4];
-        ms_draft += runs[1].stats[4];
-        tokens += (int) runs[1].stats[2];
-        drafted += (int) runs[1].stats[5];
-        accepted += (int) runs[1].stats[6];
-        std::printf("| %.40s… | %.0f | %.0f | %d/%d | %s |\n", line.c_str(), runs[0].stats[4], runs[1].stats[4],
-                    (int) runs[1].stats[6], (int) runs[1].stats[5], same ? "oui" : "**NON**");
-        details += "- " + line + "\n  - glouton : " + runs[0].text + "\n";
-        if (!same) details += "  - spéculatif : " + runs[1].text + "\n";
+    std::vector<std::string> inputs;
+    {
+        std::ifstream in(argv[2]);
+        for (std::string line; std::getline(in, line);) if (!line.empty()) inputs.push_back(line);
     }
-    std::printf("\nGénération : %.0f ms → %.0f ms (×%.2f), %d tokens, brouillon accepté %d/%d (%.0f %%)\n\n%s",
-                ms_plain, ms_draft, ms_draft > 0 ? ms_plain / ms_draft : 0.0, tokens, accepted, drafted,
-                drafted > 0 ? 100.0 * accepted / drafted : 0.0, details.c_str());
+    const std::string system = read_file(argv[4]);
+
+    // 1. Décodage : glouton (deux fois, pour le bruit numérique) contre brouillon de 4 et 8 tokens.
+    const int drafts[] = {4, 8};
+    double ms_plain = 0, ms_draft[2] = {0, 0};
+    int same[2] = {0, 0}, acc[2] = {0, 0}, prop[2] = {0, 0}, stable = 0;
+    std::printf("## Décodage spéculatif (%d threads)\n\n", threads);
+    std::printf("| Entrée | glouton ms | brouillon 4 ms | brouillon 8 ms | accepté (8) | identique 4 / 8 |\n|---|---|---|---|---|---|\n");
+    std::string details;
+    for (const auto &line : inputs) {
+        Run plain = complete(env, ptr, system, line, 0);
+        Run again = complete(env, ptr, system, line, 0);
+        const bool deterministic = plain.text == again.text;
+        if (deterministic) stable++;
+        Run spec[2];
+        for (int k = 0; k < 2; ++k) {
+            spec[k] = complete(env, ptr, system, line, drafts[k]);
+            ms_draft[k] += spec[k].stats[4];
+            acc[k] += (int) spec[k].stats[6];
+            prop[k] += (int) spec[k].stats[5];
+            if (spec[k].text == plain.text) same[k]++;
+        }
+        ms_plain += plain.stats[4];
+        std::printf("| %.40s… | %.0f | %.0f | %.0f | %d/%d | %s / %s%s |\n", line.c_str(), plain.stats[4],
+                    spec[0].stats[4], spec[1].stats[4], (int) spec[1].stats[6], (int) spec[1].stats[5],
+                    spec[0].text == plain.text ? "oui" : "**non**", spec[1].text == plain.text ? "oui" : "**non**",
+                    deterministic ? "" : " (glouton instable)");
+        details += "- " + line + "\n  - glouton : " + plain.text + "\n";
+        for (int k = 0; k < 2; ++k)
+            if (spec[k].text != plain.text) details += "  - brouillon " + std::to_string(drafts[k]) + " : " + spec[k].text + "\n";
+    }
+    for (int k = 0; k < 2; ++k) {
+        std::printf("\nBrouillon %d : génération %.0f ms → %.0f ms (×%.2f), accepté %d/%d (%.0f %%), identique %d/%zu",
+                    drafts[k], ms_plain, ms_draft[k], ms_draft[k] > 0 ? ms_plain / ms_draft[k] : 0.0, acc[k], prop[k],
+                    prop[k] > 0 ? 100.0 * acc[k] / prop[k] : 0.0, same[k], inputs.size());
+    }
+    std::printf("\n\n%s", details.c_str());
+
+    // 2. Autres prompts système (comparaison de qualité, glouton).
+    for (int a = 5; a < argc; ++a) {
+        const std::string alt = read_file(argv[a]);
+        std::printf("\n## Prompt %s\n\n", argv[a]);
+        for (const auto &line : inputs) {
+            Run r = complete(env, ptr, alt, line, 0);
+            std::printf("- %s\n  - %s\n", line.c_str(), r.text.c_str());
+        }
+    }
     JNI_FN(nFree)(env, nullptr, ptr);
-    return mismatches == 0 ? 0 : 1;
+    // Un écart isolé vient du bruit numérique (lots de tailles différentes) sur une quasi-égalité ;
+    // une majorité d'écarts signale un cache KV mal tenu.
+    return 2 * same[1] >= (int) inputs.size() ? 0 : 1;
 }

@@ -59,12 +59,16 @@ Sortie : Écris un poème sur la mer.
         return t to null
     }
 
-    /** Négations : les supprimer inverse le sens, sauf auto-correction explicite. */
-    private val protected = setOf("ne", "n", "pas", "jamais", "rien", "aucun", "aucune")
-    private val correctionMarkers = listOf("pardon", "plutot", "enfin", "je veux dire", "je reprends")
+    /** Mots de remplissage qu'on peut retirer seuls. */
+    private val fillers = setOf("euh", "euhh", "heu", "hum", "hmm", "mmh", "bah", "ben", "bon", "genre", "alors", "voila", "quoi", "bref", "enfin")
+    /** Tics de deux mots (« en fait », « du coup », « tu vois », « tu sais »). */
+    private val fillerPairs = setOf("en" to "fait", "du" to "coup", "tu" to "vois", "tu" to "sais")
+    /** Mots qui annoncent une auto-correction orale : ce qui précède peut disparaître. */
+    private val correctionMarkers = setOf("pardon", "plutot", "enfin", "reprends", "dire")
+    /** Portée d'une auto-correction : mots retirables avant le marqueur. */
+    private const val CORRECTION_SPAN = 8
     private val nonWord = Regex("[^\\p{L}\\p{N}]+")
     private val accents = Regex("\\p{Mn}+")
-    private const val INF = Int.MAX_VALUE / 2
 
     private fun words(text: String): List<String> =
         Normalizer.normalize(text.lowercase(), Normalizer.Form.NFD).replace(accents, "")
@@ -82,35 +86,56 @@ Sortie : Écris un poème sur la mer.
         return ja - i <= 0 && jb - i <= 0
     }
 
+    /** Mots de la dictée que le nettoyage a le droit de retirer. */
+    private fun removable(r: List<String>): BooleanArray {
+        val ok = BooleanArray(r.size)
+        for (i in r.indices) {
+            val w = r[i]
+            ok[i] = w in fillers ||
+                (i + 1 < r.size && (w to r[i + 1]) in fillerPairs) || (i > 0 && (r[i - 1] to w) in fillerPairs) ||
+                (i + 1 < r.size && r[i + 1] == w) // répétition (« le le »)
+        }
+        // Auto-correction (« mardi non pardon mercredi ») : le marqueur et ce qui le précède.
+        for (m in r.indices) {
+            if (r[m] !in correctionMarkers) continue
+            if (r[m] == "dire" && (m < 2 || r[m - 1] != "veux")) continue // « je veux dire » seulement
+            for (i in maxOf(0, m - CORRECTION_SPAN)..m) ok[i] = true
+            if (m + 1 < r.size && r[m + 1] == "non") ok[m + 1] = true
+        }
+        return ok
+    }
+
     /**
-     * Garde-fou : le nettoyage ne fait que retirer des mots (hésitations, répétitions,
-     * auto-corrections) et retoucher ponctuation, majuscules et orthographe. Un mot ajouté ou
-     * remplacé (« peux-tu » → « peux-je »), ou une négation retirée, fait garder le texte brut.
-     * Renvoie la raison du rejet, ou null si la sortie est acceptable.
+     * Garde-fou : le nettoyage ne fait que retirer des hésitations, des répétitions et ce
+     * qu'annule une auto-correction, et retoucher ponctuation, majuscules et orthographe. Un mot
+     * ajouté ou remplacé (« peux-tu » → « peux-je ») ou retiré à tort (« Bonjour Marie », la
+     * négation « ne ») fait garder le texte brut. Renvoie la raison du rejet, ou null.
      */
     fun wordChange(raw: String, clean: String): String? {
         val r = words(raw)
         val c = words(clean)
-        // dp[i][j] : nombre minimal de négations retirées pour obtenir c[0, j) à partir de r[0, i).
-        val dp = Array(r.size + 1) { IntArray(c.size + 1) { INF } }
-        dp[0][0] = 0
+        val removable = removable(r)
+        // reach[i][j] : c[0, j) s'obtient de r[0, i) ; dropped garde un mot retiré à tort pour le message.
+        val reach = Array(r.size + 1) { BooleanArray(c.size + 1) }
+        reach[0][0] = true
         for (i in 1..r.size) {
-            val del = if (r[i - 1] in protected) 1 else 0
             for (j in 0..c.size) {
-                var best = dp[i - 1][j] + del
-                if (j > 0 && similar(r[i - 1], c[j - 1])) best = minOf(best, dp[i - 1][j - 1])
-                dp[i][j] = minOf(best, INF)
+                reach[i][j] = (removable[i - 1] && reach[i - 1][j]) ||
+                    (j > 0 && reach[i - 1][j - 1] && similar(r[i - 1], c[j - 1]))
             }
         }
-        val cost = dp[r.size][c.size]
-        if (cost >= INF) {
-            val ok = (0..c.size).last { j -> (0..r.size).any { dp[it][j] < INF } }
-            return "mot ajouté ou modifié : « ${c.getOrElse(ok) { "?" }} »"
+        if (reach[r.size][c.size]) return null
+        // Diagnostic : mot retiré à tort, sinon mot ajouté ou modifié.
+        val loose = Array(r.size + 1) { BooleanArray(c.size + 1) }
+        loose[0][0] = true
+        for (i in 1..r.size) for (j in 0..c.size) {
+            loose[i][j] = loose[i - 1][j] || (j > 0 && loose[i - 1][j - 1] && similar(r[i - 1], c[j - 1]))
         }
-        if (cost > 0) {
-            val plain = r.joinToString(" ")
-            if (correctionMarkers.none { it in plain }) return "négation supprimée"
+        if (loose[r.size][c.size]) {
+            val gone = r.filterIndexed { i, _ -> !removable[i] }.firstOrNull { w -> w !in c } ?: "?"
+            return "mot retiré : « $gone »"
         }
-        return null
+        val ok = (0..c.size).last { j -> (0..r.size).any { loose[it][j] } }
+        return "mot ajouté ou modifié : « ${c.getOrElse(ok) { "?" }} »"
     }
 }
