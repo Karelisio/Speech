@@ -2,6 +2,7 @@ package com.karelisio.speech.access
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
+import android.accessibilityservice.InputMethod
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.ComponentName
@@ -12,11 +13,14 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.text.InputType
 import android.view.accessibility.AccessibilityEvent
+import android.view.inputmethod.EditorInfo
 import android.view.accessibility.AccessibilityManager
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
 import android.widget.Toast
+import androidx.annotation.RequiresApi
 import com.karelisio.speech.SpeechApp
 import com.karelisio.speech.dictation.DictationController.State
 import com.karelisio.speech.dictation.DictationService
@@ -60,6 +64,8 @@ class SpeechAccessibilityService : AccessibilityService(), BubbleController.List
     /** Bulle masquée via la zone ✕ : elle revient dans une autre app. */
     private var dismissedPackage: String? = null
     private var lastEditable: AccessibilityNodeInfo? = null
+    /** Dernière app pour laquelle on a journalisé un clavier ouvert sans champ visible. */
+    private var diagnosedPackage: String? = null
 
     private val recheck = Runnable { refreshFocus() }
 
@@ -91,17 +97,55 @@ class SpeechAccessibilityService : AccessibilityService(), BubbleController.List
         refreshFocus()
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        // Regroupe les rafales d'événements (focus + sélection + fenêtre) en une seule vérification.
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) = scheduleRefresh()
+
+    /** Regroupe les rafales d'événements (focus + sélection + fenêtre) en une seule vérification. */
+    private fun scheduleRefresh() {
         handler.removeCallbacks(recheck)
         handler.postDelayed(recheck, 60)
     }
 
+    /**
+     * Canal clavier (Android 13+) : prévenu à chaque champ relié au clavier, même quand l'app
+     * cache ses vues aux services d'accessibilité (champs Compose, vues « sensibles »…).
+     */
+    @RequiresApi(33)
+    override fun onCreateInputMethod(): InputMethod = object : InputMethod(this) {
+        override fun onStartInput(attribute: EditorInfo, restarting: Boolean) {
+            super.onStartInput(attribute, restarting)
+            handler.post { scheduleRefresh() }
+        }
+
+        override fun onFinishInput() {
+            super.onFinishInput()
+            handler.post { scheduleRefresh() }
+        }
+    }
+
+    /** Champ texte relié au clavier par le canal de saisie, s'il y en a un (Android 13+). */
+    private fun imeEditor(): EditorInfo? {
+        if (Build.VERSION.SDK_INT < 33) return null
+        val im = inputMethod ?: return null
+        if (!im.currentInputStarted) return null
+        val info = im.currentInputEditorInfo ?: return null
+        val cls = info.inputType and InputType.TYPE_MASK_CLASS
+        val variation = info.inputType and InputType.TYPE_MASK_VARIATION
+        val password = when (cls) {
+            InputType.TYPE_CLASS_TEXT -> variation == InputType.TYPE_TEXT_VARIATION_PASSWORD ||
+                variation == InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD ||
+                variation == InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD
+            InputType.TYPE_CLASS_NUMBER -> variation == InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            else -> false
+        }
+        return info.takeIf { info.inputType != InputType.TYPE_NULL && !password }
+    }
+
     private fun refreshFocus() {
         val node = findInputNode()
-        val editable = node != null
-        val pkg = node?.packageName?.toString()
-        if (editable) lastEditable = node
+        val editor = if (node == null) imeEditor() else null
+        val editable = node != null || editor != null
+        val pkg = node?.packageName?.toString() ?: editor?.packageName
+        if (node != null) lastEditable = node
         if (pkg != null && pkg != focusedPackage) {
             focusedPackage = pkg
             if (pkg != dismissedPackage) dismissedPackage = null
@@ -110,9 +154,27 @@ class SpeechAccessibilityService : AccessibilityService(), BubbleController.List
         if (editable != editableFocused || ime != keyboardShown) {
             editableFocused = editable
             keyboardShown = ime
-            AppLog.i(TAG, if (editable) "champ éditable : $pkg (${node?.describe()}), clavier ${if (ime) "ouvert" else "fermé"}" else "plus de champ éditable")
+            val how = node?.describe() ?: "via le clavier, type 0x${Integer.toHexString(editor?.inputType ?: 0)}"
+            AppLog.i(TAG, if (editable) "champ éditable : $pkg ($how), clavier ${if (ime) "ouvert" else "fermé"}" else "plus de champ éditable")
         }
+        if (!editable && ime) diagnose()
         updateVisibility()
+    }
+
+    /** Clavier ouvert mais aucun champ reconnu : on note une fois par app ce que l'on voit. */
+    private fun diagnose() {
+        val focus = runCatching { findFocus(AccessibilityNodeInfo.FOCUS_INPUT) }.getOrNull()
+        val pkg = focus?.packageName?.toString() ?: runCatching { rootInActiveWindow?.packageName?.toString() }.getOrNull()
+        if (pkg == null || pkg == diagnosedPackage) return
+        diagnosedPackage = pkg
+        val im = if (Build.VERSION.SDK_INT >= 33) inputMethod else null
+        val editorDesc = if (Build.VERSION.SDK_INT >= 33) {
+            "saisie démarrée=${im?.currentInputStarted}, type=0x${Integer.toHexString(im?.currentInputEditorInfo?.inputType ?: 0)}"
+        } else "canal clavier indisponible"
+        AppLog.w(
+            TAG,
+            "clavier ouvert sans champ reconnu dans $pkg : focus=${focus?.let { it.describe() + ", password=" + it.isPassword } ?: "aucun"}, $editorDesc",
+        )
     }
 
     /** Le clavier est-il affiché ? (la liste des fenêtres n'inclut l'IME que s'il est visible) */
