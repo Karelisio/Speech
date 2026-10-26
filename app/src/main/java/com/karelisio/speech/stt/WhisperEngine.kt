@@ -19,7 +19,7 @@ class WhisperEngine(modelFile: File, override val config: EngineConfig) : SttEng
         ) ?: error("Échec de la transcription Whisper")
         val ms = SystemClock.elapsedRealtime() - t0
         val timings = WhisperNative.lastTimings(ctx)
-        return SttResult(String(bytes, Charsets.UTF_8).trim(), ms, timings.getOrNull(0))
+        return SttResult(WhisperHallucinations.strip(String(bytes, Charsets.UTF_8).trim()), ms, timings.getOrNull(0))
     }
 
     override fun close() {

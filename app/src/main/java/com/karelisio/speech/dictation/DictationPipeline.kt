@@ -10,6 +10,8 @@ import com.karelisio.speech.util.AppLog
 import com.karelisio.speech.vad.Transcriber
 import com.karelisio.speech.vad.VadMode
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 /** Résultat complet d'une dictée, de l'audio au texte final. */
 data class DictationResult(
@@ -111,7 +113,8 @@ class DictationPipeline(private val app: SpeechApp, private val scope: Coroutine
                         "${it.genTokens} générés)" + (it.reason?.let { why -> " — brut conservé : $why" } ?: "")
                 } ?: "") + ", total ${result.totalMs} ms" + if (!t.speech) " — aucune parole" else "",
         )
-        if (final.isNotBlank()) app.history.add(raw, final, result.totalMs)
+        // Écriture de l'historique en tâche de fond : l'insertion n'attend pas le disque.
+        if (final.isNotBlank()) scope.launch(Dispatchers.IO) { app.history.add(raw, final, result.totalMs) }
         return result
     }
 }

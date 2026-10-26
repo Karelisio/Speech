@@ -9,6 +9,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -40,6 +41,8 @@ class ModelManager(private val context: Context, private val scope: CoroutineSco
         private const val TAG = "Models"
         private const val READY_MARKER = ".complete"
         private const val BUF = 256 * 1024
+        /** Essais par fichier : une coupure réseau reprend où elle s'était arrêtée. */
+        private const val ATTEMPTS = 5
     }
 
     val catalog: List<ModelInfo> =
@@ -148,7 +151,7 @@ class ModelManager(private val context: Context, private val scope: CoroutineSco
                 return@forEachIndexed
             }
             val part = File(dir, f.path + ".part")
-            fetch(model.url(f), part, f.size) { have, total ->
+            fetchWithRetry(model.url(f), part, f.size) { have, total ->
                 done[i] = have
                 if (sizes[i] == 0L && total > 0) sizes[i] = total
                 report()
@@ -168,6 +171,21 @@ class ModelManager(private val context: Context, private val scope: CoroutineSco
             check(part.renameTo(dest)) { "Renommage impossible : ${dest.name}" }
         }
         File(dir, READY_MARKER).writeText(model.files.joinToString("\n") { "${it.path} ${it.sha256 ?: "?"}" })
+    }
+
+    private suspend fun fetchWithRetry(url: String, part: File, expectedSize: Long, progress: (Long, Long) -> Unit) {
+        var attempt = 1
+        while (true) {
+            try {
+                return fetch(url, part, expectedSize, progress)
+            } catch (e: IOException) {
+                if (attempt >= ATTEMPTS) throw e
+                val wait = 2_000L shl (attempt - 1)
+                AppLog.w(TAG, "${part.name} : ${e.message} — reprise dans ${wait / 1000} s (essai ${attempt + 1}/$ATTEMPTS)")
+                delay(wait)
+                attempt++
+            }
+        }
     }
 
     private suspend fun fetch(url: String, part: File, expectedSize: Long, progress: (Long, Long) -> Unit) {

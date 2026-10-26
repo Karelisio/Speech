@@ -63,7 +63,14 @@ class DictationService : Service() {
         super.onCreate()
         getSystemService(NotificationManager::class.java)
             .createNotificationChannel(NotificationChannel(CHANNEL, "Service de dictée", NotificationManager.IMPORTANCE_LOW))
-        ServiceCompat.startForeground(this, NOTIF_ID, notification(paused = false), ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+        // Refusé hors premier plan (Android 14+) : la bulle relancera le service via l'activité relais.
+        runCatching {
+            ServiceCompat.startForeground(this, NOTIF_ID, notification(paused = false), ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+        }.onFailure {
+            AppLog.e("Service", "passage au premier plan refusé", it)
+            stopSelf()
+            return
+        }
         isRunning = true
         AppLog.i("Service", "service de dictée démarré")
         scope.launch {
@@ -107,7 +114,8 @@ class DictationService : Service() {
                 stopSelf()
             }
         }
-        return START_STICKY
+        // Pas de relance automatique : depuis l'arrière-plan, le service n'aurait pas accès au micro.
+        return START_NOT_STICKY
     }
 
     private fun action(action: String) = PendingIntent.getService(

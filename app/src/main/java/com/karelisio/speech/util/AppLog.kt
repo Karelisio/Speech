@@ -7,6 +7,7 @@ import java.text.SimpleDateFormat
 import java.util.ArrayDeque
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.Executors
 
 /** Journal applicatif : logcat + tampon mémoire + fichier, exportable en un tap. */
 object AppLog {
@@ -16,6 +17,8 @@ object AppLog {
     private val lines = ArrayDeque<String>()
     private val fmt = SimpleDateFormat("HH:mm:ss.SSS", Locale.ROOT)
     private var file: File? = null
+    /** Écriture disque hors du thread appelant (souvent le thread principal, en pleine dictée). */
+    private val writer = Executors.newSingleThreadExecutor { Thread(it, "speech-log").apply { isDaemon = true } }
 
     fun init(context: Context) {
         val dir = File(context.filesDir, "logs").apply { mkdirs() }
@@ -35,7 +38,7 @@ object AppLog {
         val line = "${fmt.format(Date())} $lvl/$tag: $msg" + (t?.let { " — ${it.javaClass.simpleName}: ${it.message}" } ?: "")
         lines.addLast(line)
         while (lines.size > MAX_LINES) lines.removeFirst()
-        runCatching { file?.appendText(line + "\n") }
+        file?.let { f -> writer.execute { runCatching { f.appendText(line + "\n") } } }
     }
 
     @Synchronized

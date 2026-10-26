@@ -12,12 +12,14 @@ import com.karelisio.speech.vad.VadStream
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
@@ -47,7 +49,8 @@ class LiveSession(
         job = scope.launch(Dispatchers.Default) {
             while (isActive) {
                 delay(POLL_MS)
-                mutex.withLock { pump(app.recorder.snapshot(fed), final = false) }
+                // Un segment entamé va jusqu'au bout : annulé au stop, son texte serait perdu.
+                withContext(NonCancellable) { mutex.withLock { pump(app.recorder.snapshot(fed), final = false) } }
             }
         }
     }
