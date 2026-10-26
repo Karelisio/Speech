@@ -38,17 +38,21 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: ~/models
-          key: qwen2.5-1.5b-instruct-q4_0-91cad511
-      - name: Modèle Qwen 2.5 1.5B Q4_0 (celui de l'app)
+          key: qwen2.5-q4_0-1.5b-91cad511-3b-7dabda4d
+          restore-keys: qwen2.5-1.5b-instruct-q4_0-91cad511
+      - name: Modèles Qwen 2.5 1.5B et 3B Q4_0 (ceux de l'app)
         run: |
           mkdir -p ~/models
-          f=~/models/qwen.gguf
-          [ -f "$f" ] || curl -fsSL -o "$f" "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/91cad51170dc346986eccefdc2dd33a9da36ead9/qwen2.5-1.5b-instruct-q4_0.gguf"
-          echo "dcd819ff094852c38faba6873d8ff0c9d51eadb2844539e52042ae5d647bbfdb  $f" | sha256sum -c
+          get() { [ -f "$1" ] || curl -fsSL -o "$1" "$2"; echo "$3  $1" | sha256sum -c; }
+          get ~/models/qwen.gguf "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/91cad51170dc346986eccefdc2dd33a9da36ead9/qwen2.5-1.5b-instruct-q4_0.gguf" dcd819ff094852c38faba6873d8ff0c9d51eadb2844539e52042ae5d647bbfdb
+          get ~/models/qwen3b.gguf "https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF/resolve/7dabda4d13d513e3e842b20f0d435c732f172cbe/qwen2.5-3b-instruct-q4_0.gguf" 670d82d0fbee6289b661eb323612c65bd2e97ec8c65cdbd9131aa44d30e9816a
       - name: Même texte qu'en glouton, et gain de vitesse
         run: |
           set -o pipefail
-          scripts/llm_check/run.sh ~/models/qwen.gguf | tee -a "$GITHUB_STEP_SUMMARY"
+          for m in qwen qwen3b; do
+            echo "# $m" | tee -a "$GITHUB_STEP_SUMMARY"
+            scripts/llm_check/run.sh ~/models/$m.gguf | tee -a "$GITHUB_STEP_SUMMARY"
+          done
 
   build:
     name: APK arm64-v8a
