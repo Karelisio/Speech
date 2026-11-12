@@ -55,6 +55,7 @@ class LlamaCleaner(
         val t0 = SystemClock.elapsedRealtime()
         if (raw.isBlank() || ptr == 0L) return CleanResult(raw, raw, false, 0, reason = "rien à nettoyer")
         warm()
+        com.karelisio.speech.util.AppLog.mark("Clean", "nettoyage (${api.name}, brouillon $draftMax)…")
         val bytes = api.complete(ptr, system, raw.trim(), MAX_RATIO, EXTRA_TOKENS, draftMax)
         val s = api.lastStats(ptr)
         val ms = SystemClock.elapsedRealtime() - t0

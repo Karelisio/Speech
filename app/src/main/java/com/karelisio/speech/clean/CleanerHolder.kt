@@ -70,7 +70,9 @@ class CleanerHolder(private val models: ModelManager, private val scope: Corouti
             withContext(Dispatchers.Default) {
                 obtain(modelId, nThreads).apply {
                     system = CleanPrompt.build(terms)
-                    (this as? LlamaCleaner)?.draftMax = draftMax
+                    // Décodage spéculatif sur CPU seulement : les lots de vérification font planter
+                    // le backend OpenCL du téléphone (Magic7 Pro, 1.0.4–1.0.7).
+                    (this as? LlamaCleaner)?.let { it.draftMax = if (it.api === LlamaNativeGpu) 0 else draftMax }
                 }.clean(raw)
             }
         }

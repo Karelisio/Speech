@@ -211,7 +211,7 @@ fun SettingsScreen(modifier: Modifier = Modifier, onOpenPermissions: () -> Unit,
                 GroupDivider()
                 SegmentedRow(
                     Icons.Rounded.Bolt, "Décodage rapide",
-                    "Recopie la dictée par blocs vérifiés : même texte, moins d'attente",
+                    "Sur CPU uniquement (ignoré sur GPU) : même texte, moins d'attente",
                     listOf(0 to "Off", 4 to "4", 8 to "8"), prefs.llmDraft,
                 ) {
                     prefs.llmDraft = it
