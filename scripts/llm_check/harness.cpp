@@ -4,6 +4,7 @@
 #include <jni.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -18,6 +19,32 @@ namespace {
 // Chaînes et tableaux Java représentés par des objets C++ (jamais libérés : programme court).
 const char *GetStringUTFChars(JNIEnv *, jstring s, jboolean *) { return reinterpret_cast<std::string *>(s)->c_str(); }
 void ReleaseStringUTFChars(JNIEnv *, jstring, const char *) {}
+// Chaîne Java = UTF-16 : décodage de l'UTF-8 stocké (vérifie aussi la conversion inverse de jstr).
+std::u16string utf16(const std::string &s) {
+    std::u16string out;
+    for (size_t i = 0; i < s.size();) {
+        unsigned char c = (unsigned char) s[i];
+        uint32_t cp;
+        int len = c < 0x80 ? 1 : c < 0xE0 ? 2 : c < 0xF0 ? 3 : 4;
+        cp = len == 1 ? c : len == 2 ? (c & 0x1F) : len == 3 ? (c & 0x0F) : (c & 0x07);
+        for (int k = 1; k < len && i + k < s.size(); ++k) cp = (cp << 6) | ((unsigned char) s[i + k] & 0x3F);
+        i += len;
+        if (cp >= 0x10000) {
+            cp -= 0x10000;
+            out += (char16_t) (0xD800 + (cp >> 10));
+            out += (char16_t) (0xDC00 + (cp & 0x3FF));
+        } else {
+            out += (char16_t) cp;
+        }
+    }
+    return out;
+}
+jsize GetStringLength(JNIEnv *, jstring s) { return (jsize) utf16(*reinterpret_cast<std::string *>(s)).size(); }
+const jchar *GetStringChars(JNIEnv *, jstring s, jboolean *) {
+    auto *u = new std::u16string(utf16(*reinterpret_cast<std::string *>(s)));
+    return reinterpret_cast<const jchar *>(u->c_str());
+}
+void ReleaseStringChars(JNIEnv *, jstring, const jchar *) {}
 jstring NewStringUTF(JNIEnv *, const char *s) { return reinterpret_cast<jstring>(new std::string(s)); }
 jbyteArray NewByteArray(JNIEnv *, jsize n) { return reinterpret_cast<jbyteArray>(new std::string((size_t) n, '\0')); }
 void SetByteArrayRegion(JNIEnv *, jbyteArray a, jsize start, jsize n, const jbyte *buf) {
@@ -61,6 +88,9 @@ int main(int argc, char **argv) {
     }
     JNINativeInterface_ fns{};
     fns.GetStringUTFChars = GetStringUTFChars;
+    fns.GetStringLength = GetStringLength;
+    fns.GetStringChars = GetStringChars;
+    fns.ReleaseStringChars = ReleaseStringChars;
     fns.ReleaseStringUTFChars = ReleaseStringUTFChars;
     fns.NewStringUTF = NewStringUTF;
     fns.NewByteArray = NewByteArray;
