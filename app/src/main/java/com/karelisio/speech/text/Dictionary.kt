@@ -16,7 +16,7 @@ class Dictionary(terms: List<String>) {
     private data class Entry(val term: String, val words: Int, val exact: String, val loose: String)
 
     private val entries = this.terms.map { t ->
-        Entry(t, t.split(Regex("[\\s-]+")).size, exactKey(t), looseKey(t))
+        Entry(t, t.split(SEPARATORS).size, exactKey(t), looseKey(t))
     }
 
     fun whisperPrompt(): String? = if (terms.isEmpty()) null else "Vocabulaire : ${terms.joinToString(", ")}."
@@ -51,7 +51,7 @@ class Dictionary(terms: List<String>) {
             for (k in maxOf(1, e.words - 1)..(e.words + 1)) {
                 if (i + k > words.size) break
                 val candidate = words.subList(i, i + k).joinToString(" ") { it.value }
-                val score = similarity(e, candidate)
+                val score = similarity(e, candidate, k)
                 if (score > bestScore) {
                     bestScore = score
                     best = e to k
@@ -62,11 +62,12 @@ class Dictionary(terms: List<String>) {
     }
 
     /** 1 = identique (à la casse / au séparateur près) ; 0 = pas de correspondance. */
-    private fun similarity(e: Entry, candidate: String): Double {
+    private fun similarity(e: Entry, candidate: String, k: Int): Double {
         val exact = exactKey(candidate)
         if (exact == e.exact) return if (candidate.replace('-', ' ') == e.term.replace('-', ' ')) 0.0 else 1.0
-        // Correspondance approchée seulement pour les termes assez longs (évite « mari » → « Marie »).
-        if (e.loose.length < 6) return 0.0
+        // Correspondance approchée seulement pour les termes assez longs (évite « mari » → « Marie »),
+        // et à nombre de mots égal : sinon « à Mathieu » ≈ « Mathieu » avalerait le « à ».
+        if (k != e.words || e.loose.length < 6) return 0.0
         val loose = looseKey(candidate)
         val d = levenshtein(loose, e.loose)
         val sim = 1.0 - d.toDouble() / maxOf(loose.length, e.loose.length)
@@ -75,13 +76,16 @@ class Dictionary(terms: List<String>) {
 
     companion object {
         private val WORD = Regex("[\\p{L}\\p{N}][\\p{L}\\p{N}'’]*")
+        private val SEPARATORS = Regex("[\\s-]+")
+        private val KEY_SEPARATORS = Regex("[\\s'’-]+")
+        private val MARKS = Regex("\\p{M}+")
 
         /** Minuscules, séparateurs ignorés, accents conservés. */
-        private fun exactKey(s: String) = s.lowercase(Locale.FRENCH).replace(Regex("[\\s'’-]+"), "")
+        private fun exactKey(s: String) = s.lowercase(Locale.FRENCH).replace(KEY_SEPARATORS, "")
 
         /** Comme [exactKey] mais sans accents (comparaison approchée). */
         private fun looseKey(s: String) =
-            Normalizer.normalize(exactKey(s), Normalizer.Form.NFD).replace(Regex("\\p{M}+"), "")
+            Normalizer.normalize(exactKey(s), Normalizer.Form.NFD).replace(MARKS, "")
 
         fun levenshtein(a: String, b: String): Int {
             var prev = IntArray(b.length + 1) { it }

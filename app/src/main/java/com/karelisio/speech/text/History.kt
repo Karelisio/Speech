@@ -35,12 +35,23 @@ class History(context: Context) {
         list.forEach {
             arr.put(JSONObject().put("time", it.time).put("raw", it.raw).put("text", it.text).put("latencyMs", it.latencyMs))
         }
-        runCatching { file.writeText(arr.toString()) }
+        // Écriture atomique : un arrêt brutal pendant l'écriture n'efface pas tout l'historique.
+        runCatching {
+            val af = android.util.AtomicFile(file)
+            val out = af.startWrite()
+            try {
+                out.write(arr.toString().toByteArray())
+                af.finishWrite(out)
+            } catch (e: Exception) {
+                af.failWrite(out)
+                throw e
+            }
+        }
         _entries.value = list
     }
 
     private fun load(): List<HistoryEntry> = runCatching {
-        val arr = JSONArray(file.readText())
+        val arr = JSONArray(String(android.util.AtomicFile(file).readFully()))
         (0 until arr.length()).map { i ->
             val o = arr.getJSONObject(i)
             HistoryEntry(o.getLong("time"), o.getString("raw"), o.getString("text"), o.optLong("latencyMs"))

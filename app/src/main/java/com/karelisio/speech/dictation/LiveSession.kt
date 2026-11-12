@@ -44,13 +44,24 @@ class LiveSession(
     private var fed = 0
     private var sttMs = 0L
     private var job: Job? = null
+    /** Erreur pendant l'enregistrement : la dictée repasse par la transcription classique. */
+    @Volatile private var failed = false
+    /** Audio complet donné par [finish] : la fin ne se lit plus dans l'enregistreur (déjà réutilisé ?). */
+    @Volatile private var finalAudio: FloatArray? = null
 
     fun start() {
         job = scope.launch(Dispatchers.Default) {
             while (isActive) {
                 delay(POLL_MS)
                 // Un segment entamé va jusqu'au bout : annulé au stop, son texte serait perdu.
-                withContext(NonCancellable) { mutex.withLock { pump(app.recorder.snapshot(fed), final = false) } }
+                try {
+                    withContext(NonCancellable) { mutex.withLock { pump(app.recorder.snapshot(fed), final = false) } }
+                } catch (e: Exception) {
+                    // Lancé dans le scope de l'app : une exception non rattrapée tuerait le process.
+                    AppLog.e(TAG, "transcription en direct en échec, repli sur la transcription finale", e)
+                    failed = true
+                    break
+                }
             }
         }
     }
@@ -63,7 +74,13 @@ class LiveSession(
 
     private suspend fun transcribe(span: Span) {
         val pad = VadProcessor.PAD_SAMPLES
-        val segment = app.recorder.slice(span.start - pad, span.end + pad)
+        val full = finalAudio
+        val segment = if (full != null) {
+            val a = (span.start - pad).coerceIn(0, full.size)
+            full.copyOfRange(a, (span.end + pad).coerceIn(a, full.size))
+        } else {
+            app.recorder.slice(span.start - pad, span.end + pad)
+        }
         if (segment.isEmpty()) return
         val r = app.engines.use(cfg) { it.transcribe(segment, request) }
         sttMs += r.processingMs
@@ -78,11 +95,21 @@ class LiveSession(
     }
 
     /** Termine avec l'audio complet : seul le dernier segment reste à transcrire. */
-    suspend fun finish(audio: FloatArray): Transcription {
+    /** null si la transcription en direct a échoué : l'appelant retranscrit tout l'audio. */
+    suspend fun finish(audio: FloatArray): Transcription? {
         job?.cancelAndJoin()
         val t0 = SystemClock.elapsedRealtime()
-        mutex.withLock { pump(audio.copyOfRange(fed.coerceAtMost(audio.size), audio.size), final = true) }
-        vad.close()
+        finalAudio = audio
+        try {
+            if (failed) return null
+            mutex.withLock { pump(audio.copyOfRange(fed.coerceAtMost(audio.size), audio.size), final = true) }
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            AppLog.e(TAG, "fin de la transcription en direct en échec", e)
+            return null
+        } finally {
+            vad.close() // libère le modèle natif même en cas d'erreur ou d'annulation
+        }
         val tail = SystemClock.elapsedRealtime() - t0
         return Transcription(
             text = texts.joinToString(" "),

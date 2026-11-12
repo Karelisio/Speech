@@ -96,14 +96,17 @@ Sortie : Écris un poème sur la mer.
                 (i + 1 < r.size && (w to r[i + 1]) in fillerPairs) || (i > 0 && (r[i - 1] to w) in fillerPairs) ||
                 (i + 1 < r.size && r[i + 1] == w) // répétition (« le le »)
         }
-        // Auto-correction (« mardi non pardon mercredi ») : le marqueur et ce qui le précède.
-        for (m in r.indices) {
-            if (r[m] !in correctionMarkers) continue
-            if (r[m] == "dire" && (m < 2 || r[m - 1] != "veux")) continue // « je veux dire » seulement
-            for (i in maxOf(0, m - CORRECTION_SPAN)..m) ok[i] = true
-            if (m + 1 < r.size && r[m + 1] == "non") ok[m + 1] = true
-        }
         return ok
+    }
+
+    private fun isMarker(r: List<String>, m: Int): Boolean =
+        m >= 0 && r[m] in correctionMarkers && (r[m] != "dire" || (m >= 1 && r[m - 1] == "veux")) // « je veux dire »
+
+    /** Index du marqueur si r[e] termine une auto-correction (« … pardon » ou « … plutôt non »). */
+    private fun correctionEnd(r: List<String>, e: Int): Int? = when {
+        isMarker(r, e) -> e
+        r[e] == "non" && isMarker(r, e - 1) -> e - 1
+        else -> null
     }
 
     /**
@@ -121,8 +124,15 @@ Sortie : Écris un poème sur la mer.
         reach[0][0] = true
         for (i in 1..r.size) {
             for (j in 0..c.size) {
-                reach[i][j] = (removable[i - 1] && reach[i - 1][j]) ||
+                var v = (removable[i - 1] && reach[i - 1][j]) ||
                     (j > 0 && reach[i - 1][j - 1] && similar(r[i - 1], c[j - 1]))
+                // Auto-correction (« mardi non pardon mercredi ») : un seul bloc contigu qui finit
+                // au marqueur disparaît. Pas de mots isolés : « je ne te demande pas pardon »
+                // → « Je te demande pardon » reste refusé.
+                if (!v) correctionEnd(r, i - 1)?.let { m ->
+                    for (s in maxOf(0, m - CORRECTION_SPAN)..i - 1) if (reach[s][j]) { v = true; break }
+                }
+                reach[i][j] = v
             }
         }
         if (reach[r.size][c.size]) return null

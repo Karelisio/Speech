@@ -48,4 +48,9 @@ class CleanPromptTest {
     @Test fun stopsAtNextExample() {
         assertEquals("Merci.", CleanPrompt.sanitize("merci", "Merci.\nEntrée : bla bla").first)
     }
+
+    @Test fun correctionMarkerDoesNotLicenseIsolatedDeletion() {
+        assertNull(CleanPrompt.sanitize("je ne te demande pas pardon", "Je te demande pardon.").first)
+        assertNull(CleanPrompt.sanitize("ce n'est pas plutôt mardi", "C'est plutôt mardi ?").first)
+    }
 }

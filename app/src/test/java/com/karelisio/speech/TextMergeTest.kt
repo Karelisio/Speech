@@ -46,4 +46,9 @@ class TextMergeTest {
     @Test fun afterNewlineNoSpace() {
         assertEquals("Ligne\nSuite", TextMerge.merge("Ligne\n", 6, 6, "Suite").text)
     }
+
+    @Test fun noSpaceAfterElisionOrOpening() {
+        assertEquals("l'homme", TextMerge.merge("l'", 2, 2, "homme").text)
+        assertEquals("(voir annexe", TextMerge.merge("(", 1, 1, "voir annexe").text)
+    }
 }

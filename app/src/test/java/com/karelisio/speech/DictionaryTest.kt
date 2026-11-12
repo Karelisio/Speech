@@ -35,4 +35,10 @@ class DictionaryTest {
         assertNull(Dictionary(emptyList()).whisperPrompt())
         assertEquals("Vocabulaire : A, B.", Dictionary(listOf("A", " B ", "")).whisperPrompt())
     }
+
+    @Test fun neighbourWordIsKept() {
+        val dict = Dictionary(listOf("Mathieu", "Karelisio"))
+        assertEquals("J'ai écrit à Mathieu", dict.apply("J'ai écrit à Mathieu"))
+        assertEquals("Karelisio a dit", dict.apply("Karelisio a dit"))
+    }
 }

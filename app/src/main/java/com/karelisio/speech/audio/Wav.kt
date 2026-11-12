@@ -52,9 +52,11 @@ object Wav {
                 }
             }
             if (dataOff >= 0) break
+            require(len >= 0) { "Bloc WAV invalide" } // sinon `pos` recule ou stagne : boucle infinie
             pos = body + len + (len and 1)
         }
         require(dataOff >= 0) { "Bloc data introuvable" }
+        require(channels in 1..8 && bits in setOf(8, 16, 32) && rate > 0) { "Format WAV non supporté ($channels canaux, $bits bits, $rate Hz)" }
         val frameBytes = bits / 8 * channels
         val frames = dataLen / frameBytes
         val mono = FloatArray(frames)

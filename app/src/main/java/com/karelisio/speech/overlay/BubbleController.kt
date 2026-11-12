@@ -34,6 +34,7 @@ class BubbleController(
         fun onTap()
         fun onHoldStart()
         fun onHoldEnd()
+        fun onHoldCancel() = onHoldEnd()
         fun onDismiss()
     }
 
@@ -179,14 +180,25 @@ class BubbleController(
             .start()
     }
 
+    /** Positions réelles à l'écran (les deux fenêtres n'ont pas la même origine : barres système). */
     private fun overTarget(): Boolean {
+        if (target.parent == null) return false
+        val b = IntArray(2).also(bubble::getLocationOnScreen)
+        val t = IntArray(2).also(target::getLocationOnScreen)
+        val dx = b[0] + bubble.width / 2f - (t[0] + target.width / 2f)
+        val dy = b[1] + bubble.height / 2f - (t[1] + target.height / 2f)
+        return hypot(dx, dy) < dp(72)
+    }
+
+    /** Rotation / changement de taille d'écran : la bulle revient au bord mémorisé. */
+    fun relayout() {
+        if (!attached) return
+        snapAnim?.cancel()
         val (w, h) = screenSize()
         val total = bubble.totalPx
-        val bx = lp.x + total / 2f
-        val by = lp.y + total / 2f
-        val tx = w / 2f
-        val ty = h - targetLp.y - dp(72) / 2f
-        return hypot(bx - tx, by - ty) < dp(72)
+        lp.x = if (prefs.bubbleRight) w - total else 0
+        lp.y = (prefs.bubbleY * h).roundToInt().coerceIn(0, maxOf(0, h - total))
+        runCatching { wm.updateViewLayout(bubble, lp) }
     }
 
     private fun snapToEdge() {
@@ -249,6 +261,7 @@ class BubbleController(
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     v.removeCallbacks(holdRunnable)
                     when {
+                        holding && e.actionMasked == MotionEvent.ACTION_CANCEL -> listener.onHoldCancel()
                         holding -> { haptic(); listener.onHoldEnd() }
                         dragging -> {
                             val dismiss = overTarget()

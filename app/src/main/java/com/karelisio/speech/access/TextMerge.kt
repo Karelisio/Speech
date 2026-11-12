@@ -8,6 +8,8 @@ data class Merged(val text: String, val cursor: Int, val start: Int, val end: In
 
 object TextMerge {
     private val NO_SPACE_BEFORE = setOf('.', ',', ';', ':', '!', '?', ')', ']', '}', '…', '%')
+    /** Caractères collés au mot qui suit : élision (« l' »), ouvrants, @, #… */
+    private val GLUE_AFTER = setOf('\'', '’', '(', '[', '{', '/', '@', '#')
 
     /**
      * Insère [insert] à la place de la sélection [selStart, selEnd) (ou à la fin si la sélection
@@ -25,7 +27,8 @@ object TextMerge {
         val after = existing.substring(e)
         if (text.isEmpty()) return Merged(existing, e, s, e, "")
 
-        val needSpaceBefore = before.isNotEmpty() && !before.last().isWhitespace() && text.first() !in NO_SPACE_BEFORE
+        val needSpaceBefore = before.isNotEmpty() && !before.last().isWhitespace() && before.last() !in GLUE_AFTER &&
+            text.first() !in NO_SPACE_BEFORE
         val needSpaceAfter = after.isNotEmpty() && (after.first().isLetterOrDigit())
         val piece = (if (needSpaceBefore) " " else "") + text + (if (needSpaceAfter) " " else "")
         val head = before + piece

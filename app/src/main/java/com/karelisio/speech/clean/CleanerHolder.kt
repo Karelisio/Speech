@@ -101,7 +101,10 @@ class CleanerHolder(private val models: ModelManager, private val scope: Corouti
     }
 
     suspend fun release() = mutex.withLock {
-        cleaner?.close()
-        cleaner = null
+        withContext(Dispatchers.Default) { // libération native hors du thread principal
+            cleaner?.close()
+            cleaner = null
+        }
     }
+
 }

@@ -36,6 +36,18 @@ class DictationController(private val app: SpeechApp) {
     /** Dernier texte inséré, pour l'affichage dans l'app. */
     val lastResult = MutableStateFlow<String?>(null)
 
+    init {
+        // L'enregistreur demande l'arrêt (10 min atteintes, micro perdu) : on transcrit ce qui est là.
+        scope.launch {
+            app.recorder.autoStop.collect { why ->
+                if (why != null && _state.value == State.RECORDING) {
+                    AppLog.w(TAG, "arrêt automatique : $why")
+                    stop()
+                }
+            }
+        }
+    }
+
     /** Moment où l'enregistrement a commencé (détection du double tap sur la bulle). */
     val recordingStartedAt get() = pipeline.recordingStartedAt
 

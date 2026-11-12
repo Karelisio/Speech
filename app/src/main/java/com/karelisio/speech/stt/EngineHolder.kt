@@ -41,7 +41,7 @@ class EngineHolder(private val models: ModelManager) {
         return e
     }
 
-    suspend fun release() = mutex.withLock { closeCurrent() }
+    suspend fun release() = mutex.withLock { withContext(Dispatchers.Default) { closeCurrent() } }
 
     private fun closeCurrent() {
         engine?.let {

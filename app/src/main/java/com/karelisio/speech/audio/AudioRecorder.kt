@@ -73,6 +73,8 @@ class AudioRecorder(private val configProvider: () -> CaptureConfig = { CaptureC
         const val SAMPLE_RATE = 16_000
         private const val TAG = "Audio"
         private const val CHUNK_MS = 32 // cadence de mise à jour du niveau sonore
+        /** 10 min : au-delà, l'enregistrement s'arrête (dictée oubliée → mémoire saturée). */
+        const val MAX_SAMPLES = SAMPLE_RATE * 600
     }
 
     private var record: AudioRecord? = null
@@ -100,11 +102,17 @@ class AudioRecorder(private val configProvider: () -> CaptureConfig = { CaptureC
 
     val isRecording get() = running
 
+    /** Raison d'un arrêt demandé par l'enregistreur lui-même (durée max, micro perdu) ; null sinon. */
+    private val _autoStop = MutableStateFlow<String?>(null)
+    val autoStop: StateFlow<String?> = _autoStop
+
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     fun prepare() {
         val cfg = configProvider()
         if (record != null && recordConfig == cfg) return
         record?.release()
+        record = null
+        recordConfig = null
         val minBuf = AudioRecord.getMinBufferSize(cfg.captureRate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_FLOAT)
         val r = AudioRecord.Builder()
             .setAudioSource(cfg.source.id)
@@ -117,7 +125,10 @@ class AudioRecorder(private val configProvider: () -> CaptureConfig = { CaptureC
             )
             .setBufferSizeInBytes(maxOf(minBuf, cfg.captureRate * 4)) // ≥ 250 ms
             .build()
-        check(r.state == AudioRecord.STATE_INITIALIZED) { "AudioRecord non initialisé (${cfg.label})" }
+        if (r.state != AudioRecord.STATE_INITIALIZED) {
+            r.release()
+            error("AudioRecord non initialisé (${cfg.label})")
+        }
         record = r
         recordConfig = cfg
     }
@@ -129,6 +140,7 @@ class AudioRecorder(private val configProvider: () -> CaptureConfig = { CaptureC
         val r = record!!
         val cfg = recordConfig!!
         buffer.clear()
+        _autoStop.value = null
         deviceRate = 0; deviceName = ""; effects = emptyList(); silenced = false
         tStart = SystemClock.elapsedRealtime()
         r.startRecording()
@@ -141,14 +153,27 @@ class AudioRecorder(private val configProvider: () -> CaptureConfig = { CaptureC
             var first = true
             while (running) {
                 val n = r.read(chunk, 0, chunk.size, AudioRecord.READ_BLOCKING)
-                if (n <= 0) continue
+                if (n < 0) {
+                    // Micro perdu (audioserver redémarré, périphérique retiré) : pas de boucle à vide.
+                    AppLog.e(TAG, "lecture micro en échec ($n)")
+                    _autoStop.value = "micro indisponible"
+                    break
+                }
+                if (n == 0) continue
                 if (first) {
                     lastStartLatencyMs = SystemClock.elapsedRealtime() - tStart
                     first = false
                     inspect(r)
                 }
                 val (data, m) = if (decimator != null) down to decimator.process(chunk, n, down) else chunk to n
-                synchronized(buffer) { buffer.append(data, m) }
+                val full = synchronized(buffer) {
+                    if (buffer.size + m <= MAX_SAMPLES) buffer.append(data, m)
+                    buffer.size + m > MAX_SAMPLES
+                }
+                if (full && _autoStop.value == null) {
+                    AppLog.w(TAG, "durée maximale atteinte (${MAX_SAMPLES / SAMPLE_RATE / 60} min)")
+                    _autoStop.value = "durée maximale atteinte"
+                }
                 var sum = 0.0
                 for (i in 0 until m) sum += data[i] * data[i]
                 _level.value = if (m > 0) (sqrt(sum / m) * 8).toFloat().coerceIn(0f, 1f) else 0f

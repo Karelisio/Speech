@@ -89,7 +89,7 @@ class DictationService : Service() {
             while (true) {
                 delay(60_000)
                 val minutes = app.prefs.releaseAfterMin
-                if (minutes <= 0 || app.recorder.isRecording) continue
+                if (minutes <= 0 || app.recorder.isRecording || app.controller.state.value != DictationController.State.IDLE) continue
                 val idle = SystemClock.elapsedRealtime() - app.lastActivityAt
                 if (idle < minutes * 60_000L) continue
                 if (app.engines.loadedConfig == null && app.cleaners.loadedModelId == null) continue

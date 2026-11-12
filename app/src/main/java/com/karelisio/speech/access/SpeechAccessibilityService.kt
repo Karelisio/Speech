@@ -142,7 +142,11 @@ class SpeechAccessibilityService : AccessibilityService(), BubbleController.List
 
     private fun refreshFocus() {
         val node = findInputNode()
-        val editor = if (node == null) imeEditor() else null
+        // Champ mot de passe repéré par l'accessibilité mais pas par son type de saisie
+        // (Compose PasswordVisualTransformation, bouton afficher/masquer) : jamais de bulle.
+        val passwordFocused = node == null &&
+            runCatching { findFocus(AccessibilityNodeInfo.FOCUS_INPUT)?.isPassword }.getOrNull() == true
+        val editor = if (node == null && !passwordFocused) imeEditor() else null
         val editable = node != null || editor != null
         val pkg = node?.packageName?.toString() ?: editor?.packageName
         if (node != null) lastEditable = node
@@ -250,6 +254,14 @@ class SpeechAccessibilityService : AccessibilityService(), BubbleController.List
 
     override fun onHoldEnd() = app.controller.stop()
 
+    /** Geste interrompu par le système (appel entrant, notification plein écran) : rien n'est inséré. */
+    override fun onHoldCancel() = app.controller.cancel()
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        if (::bubble.isInitialized) bubble.relayout() // rotation : la bulle reste au bord, à l'écran
+    }
+
     override fun onDismiss() {
         app.controller.cancel()
         dismissedPackage = focusedPackage
@@ -329,7 +341,9 @@ class SpeechAccessibilityService : AccessibilityService(), BubbleController.List
             if (after == null || seen) break
         }
         AppLog.i(TAG, "→ commitText envoyé, ${if (after == null) "texte non lisible" else if (seen) "texte vérifié" else "texte non retrouvé"}")
-        if (after != null && !seen) {
+        // Rien de vérifiable (connexion peut-être périmée : l'envoi a pu être ignoré) ou texte
+        // absent : copie de sécurité, sans risque de doublon.
+        if (after == null && st == null || after != null && !seen) {
             // Filet de sécurité sans risque de doublon : le texte reste disponible à coller.
             copyToClipboard(piece.trim())
             Toast.makeText(this, "Texte envoyé (et copié par sécurité)", Toast.LENGTH_SHORT).show()
@@ -378,8 +392,11 @@ class SpeechAccessibilityService : AccessibilityService(), BubbleController.List
 
     private fun collectCandidates(viewIds: List<String> = emptyList()): List<Pair<AccessibilityNodeInfo, String>> {
         val out = mutableListOf<Pair<AccessibilityNodeInfo, String>>()
+        val pkg = focusedPackage
         fun add(n: AccessibilityNodeInfo?, origin: String) {
             if (n == null || !n.isTextInput()) return
+            // Jamais dans le champ d'une autre app (écran partagé, dernier champ vu ailleurs).
+            if (pkg != null && n.packageName?.toString() != pkg) return
             if (out.none { it.first == n }) out += n to origin
         }
         add(runCatching { findFocus(AccessibilityNodeInfo.FOCUS_INPUT) }.getOrNull(), "focus")
@@ -429,8 +446,9 @@ class SpeechAccessibilityService : AccessibilityService(), BubbleController.List
         repeat(6) {
             delay(80)
             node.refresh()
-            val now = node.text?.toString() ?: ""
-            if (now.contains(needle) || (now != before && now.length >= before.length + needle.length / 2)) return true
+            // Texte réel (sans l'indication d'un champ vide) et seulement s'il a changé.
+            val now = currentText(node)
+            if (now != before && (now.contains(needle) || now.length >= before.length + needle.length / 2)) return true
         }
         return false
     }

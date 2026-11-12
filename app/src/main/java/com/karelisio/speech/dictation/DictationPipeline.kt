@@ -52,6 +52,8 @@ class DictationPipeline(private val app: SpeechApp, private val scope: Coroutine
 
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     fun start() {
+        live?.cancel() // session précédente orpheline (enregistreur arrêté de l'extérieur)
+        live = null
         // Le modèle de nettoyage et son prompt système se préparent pendant qu'on parle.
         app.cleanerModelId()?.takeIf { app.cleaning.value }?.let { app.cleaners.warmUpAsync(it, app.prefs.llmThreads) }
         app.recorder.start()
@@ -76,6 +78,7 @@ class DictationPipeline(private val app: SpeechApp, private val scope: Coroutine
     /** Arrête l'enregistrement et produit le texte final ; null si rien d'exploitable. */
     suspend fun stop(): DictationResult? {
         val tStop = SystemClock.elapsedRealtime()
+        app.lastActivityAt = tStop // la libération de RAM ne doit pas décharger les modèles pendant le traitement
         val audio = app.recorder.stop()
         val session = live
         live = null
