@@ -19,16 +19,17 @@ class LlamaCleaner(
 
     companion object {
         // Prompt système (~700 tokens) + dictée de plusieurs minutes + sa copie nettoyée.
-        private const val N_CTX = 4096
-        /** Repli si le contexte long ne peut pas être alloué (mémoire GPU). */
-        private const val N_CTX_FALLBACK = 2048
+        // Valeur éprouvée (1.0.4). Les dictées plus longues sont refusées par nComplete (texte brut gardé).
+        private const val N_CTX = 2048
         private const val MAX_RATIO = 1.5f
         private const val EXTRA_TOKENS = 16
         const val DEFAULT_DRAFT = 8
     }
 
-    private var ptr: Long = api.load(modelFile.absolutePath, N_CTX, threads, threads).takeIf { it != 0L }
-        ?: api.load(modelFile.absolutePath, N_CTX_FALLBACK, threads, threads)
+    private var ptr: Long = run {
+        com.karelisio.speech.util.AppLog.mark("Clean", "chargement de ${modelFile.name} (${api.name}, ctx $N_CTX)…")
+        api.load(modelFile.absolutePath, N_CTX, threads, threads)
+    }
 
     init {
         check(ptr != 0L) { "Impossible de charger ${modelFile.name}" }

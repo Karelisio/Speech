@@ -55,6 +55,7 @@ class CleanerHolder(private val models: ModelManager, private val scope: Corouti
             LlamaNative
         }
         val c = LlamaCleaner(File(models.dir(info), info.files.first().path), modelId, nThreads, CleanPrompt.build(terms), api)
+        AppLog.mark("Clean", "prompt système en cache…")
         c.warm()
         lastLoadMs = SystemClock.elapsedRealtime() - t0
         AppLog.i("Clean", "chargé $modelId (${api.name}, $nThreads t) + prompt système en $lastLoadMs ms, RSS +${MemInfo.rssMb() - rss0} Mo")

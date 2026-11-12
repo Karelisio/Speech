@@ -34,6 +34,7 @@ class EngineHolder(private val models: ModelManager) {
         closeCurrent()
         val rss0 = MemInfo.rssMb()
         val t0 = SystemClock.elapsedRealtime()
+        AppLog.mark("Engine", "chargement de ${config.label()}…")
         val e = EngineFactory.create(models, config)
         lastLoadMs = SystemClock.elapsedRealtime() - t0
         AppLog.i("Engine", "chargé ${config.label()} en $lastLoadMs ms, RSS +${MemInfo.rssMb() - rss0} Mo")
