@@ -18,7 +18,8 @@ class LlamaCleaner(
     var draftMax: Int = DEFAULT_DRAFT
 
     companion object {
-        private const val N_CTX = 2048
+        // Prompt système (~700 tokens) + dictée de plusieurs minutes + sa copie nettoyée.
+        private const val N_CTX = 4096
         private const val MAX_RATIO = 1.5f
         private const val EXTRA_TOKENS = 16
         const val DEFAULT_DRAFT = 8

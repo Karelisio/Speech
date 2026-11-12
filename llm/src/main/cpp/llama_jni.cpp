@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -49,11 +50,39 @@ void log_cb(ggml_log_level level, const char *text, void *) {
 
 bool abort_cb(void *data) { return static_cast<Llm *>(data)->abort.load(std::memory_order_relaxed); }
 
+/** Vrai UTF-8 (GetStringUTFChars renvoie du « modified UTF-8 » : emojis = paires de substituts invalides). */
 std::string jstr(JNIEnv *env, jstring s) {
     if (s == nullptr) return {};
-    const char *c = env->GetStringUTFChars(s, nullptr);
-    std::string out(c);
-    env->ReleaseStringUTFChars(s, c);
+    const jsize n = env->GetStringLength(s);
+    const jchar *c = env->GetStringChars(s, nullptr);
+    if (c == nullptr) return {};
+    std::string out;
+    out.reserve((size_t) n * 2);
+    for (jsize i = 0; i < n; ++i) {
+        uint32_t cp = c[i];
+        if (cp >= 0xD800 && cp <= 0xDBFF && i + 1 < n && c[i + 1] >= 0xDC00 && c[i + 1] <= 0xDFFF) {
+            cp = 0x10000 + ((cp - 0xD800) << 10) + (c[i + 1] - 0xDC00);
+            ++i;
+        } else if (cp >= 0xD800 && cp <= 0xDFFF) {
+            cp = 0xFFFD; // substitut isolé
+        }
+        if (cp < 0x80) {
+            out += (char) cp;
+        } else if (cp < 0x800) {
+            out += (char) (0xC0 | (cp >> 6));
+            out += (char) (0x80 | (cp & 0x3F));
+        } else if (cp < 0x10000) {
+            out += (char) (0xE0 | (cp >> 12));
+            out += (char) (0x80 | ((cp >> 6) & 0x3F));
+            out += (char) (0x80 | (cp & 0x3F));
+        } else {
+            out += (char) (0xF0 | (cp >> 18));
+            out += (char) (0x80 | ((cp >> 12) & 0x3F));
+            out += (char) (0x80 | ((cp >> 6) & 0x3F));
+            out += (char) (0x80 | (cp & 0x3F));
+        }
+    }
+    env->ReleaseStringChars(s, c);
     return out;
 }
 
@@ -228,6 +257,9 @@ JNI_FN(nComplete)(
     auto *l = reinterpret_cast<Llm *>(ptr);
     if (!l) return nullptr;
     l->abort.store(false);
+    // Statistiques remises à zéro : un retour anticipé ne montre pas celles de l'appel précédent.
+    l->reused = l->prefilled = l->generated = l->drafted = l->accepted = 0;
+    l->prefill_ms = l->gen_ms = 0;
     std::string user = jstr(env, juser);
     std::string prompt = format(l, jstr(env, jsystem), &user);
     if (prompt.empty()) return nullptr;
@@ -237,7 +269,11 @@ JNI_FN(nComplete)(
     const int n_draft = std::clamp<int>(draft_max, 0, 16);
     const int n_ctx = (int) llama_n_ctx(l->ctx);
     if ((int) tokens.size() + max_new + n_draft > n_ctx) max_new = n_ctx - (int) tokens.size() - n_draft;
-    if (max_new <= 0) return nullptr;
+    // Contexte trop court pour recopier la dictée entière : sortie forcément tronquée, inutile de calculer.
+    if (max_new < (int) src.size()) {
+        LOGW("dictée trop longue pour le contexte (%zu + %zu tokens)", tokens.size(), src.size());
+        return nullptr;
+    }
 
     auto t0 = Clock::now();
     if (!prefill(l, tokens)) return nullptr;
@@ -257,6 +293,7 @@ JNI_FN(nComplete)(
     llama_memory_t mem = llama_get_memory(l->ctx);
     size_t cursor = 0;
     int g = 0;
+    bool failed = false;
     l->drafted = 0;
     l->accepted = 0;
     // `tok` : prochain token choisi par le modèle, pas encore dans le cache KV.
@@ -274,6 +311,7 @@ JNI_FN(nComplete)(
             // Interrompu ou en échec : état du cache incertain, il sera recalculé au prochain appel.
             l->cached.clear();
             llama_memory_clear(mem, true);
+            failed = true;
             break;
         }
         l->cached.push_back(tok);
@@ -296,6 +334,7 @@ JNI_FN(nComplete)(
     llama_batch_free(batch);
     l->generated = g;
     l->gen_ms = ms_since(t1);
+    if (failed) return nullptr; // texte partiel : jamais présenté comme un succès
 
     jbyteArray arr = env->NewByteArray((jsize) out.size());
     env->SetByteArrayRegion(arr, 0, (jsize) out.size(), reinterpret_cast<const jbyte *>(out.data()));

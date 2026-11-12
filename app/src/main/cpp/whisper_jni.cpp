@@ -1,6 +1,7 @@
 #include <jni.h>
 #include <android/log.h>
 #include <atomic>
+#include <cstdint>
 #include <string>
 
 #include "whisper.h"
@@ -29,11 +30,39 @@ bool abort_cb(void *user) {
     return static_cast<Ctx *>(user)->abort.load(std::memory_order_relaxed);
 }
 
+/** Vrai UTF-8 (GetStringUTFChars renvoie du « modified UTF-8 » : emojis = paires de substituts invalides). */
 std::string jstr(JNIEnv *env, jstring s) {
     if (s == nullptr) return {};
-    const char *c = env->GetStringUTFChars(s, nullptr);
-    std::string out(c);
-    env->ReleaseStringUTFChars(s, c);
+    const jsize n = env->GetStringLength(s);
+    const jchar *c = env->GetStringChars(s, nullptr);
+    if (c == nullptr) return {};
+    std::string out;
+    out.reserve((size_t) n * 2);
+    for (jsize i = 0; i < n; ++i) {
+        uint32_t cp = c[i];
+        if (cp >= 0xD800 && cp <= 0xDBFF && i + 1 < n && c[i + 1] >= 0xDC00 && c[i + 1] <= 0xDFFF) {
+            cp = 0x10000 + ((cp - 0xD800) << 10) + (c[i + 1] - 0xDC00);
+            ++i;
+        } else if (cp >= 0xD800 && cp <= 0xDFFF) {
+            cp = 0xFFFD; // substitut isolé
+        }
+        if (cp < 0x80) {
+            out += (char) cp;
+        } else if (cp < 0x800) {
+            out += (char) (0xC0 | (cp >> 6));
+            out += (char) (0x80 | (cp & 0x3F));
+        } else if (cp < 0x10000) {
+            out += (char) (0xE0 | (cp >> 12));
+            out += (char) (0x80 | ((cp >> 6) & 0x3F));
+            out += (char) (0x80 | (cp & 0x3F));
+        } else {
+            out += (char) (0xF0 | (cp >> 18));
+            out += (char) (0x80 | ((cp >> 12) & 0x3F));
+            out += (char) (0x80 | ((cp >> 6) & 0x3F));
+            out += (char) (0x80 | (cp & 0x3F));
+        }
+    }
+    env->ReleaseStringChars(s, c);
     return out;
 }
 
