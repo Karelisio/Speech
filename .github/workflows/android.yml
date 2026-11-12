@@ -5,9 +5,11 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Pas d'annulation en cours de route : un run interrompu entre l'APK et version.json
+# laisserait une release incohérente (mise à jour in-app en échec).
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 env:
   NDK_VERSION: "30.0.16248370"
@@ -124,6 +126,13 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG=dev-latest
+          # Jamais de publication signée avec la clé de dev publique : la mise à jour échouerait chez tout le monde.
+          [ -n "${SPEECH_KEYSTORE:-}" ] || { echo "::error::Keystore de release absent : rien n'est publié"; exit 1; }
+          # Relance d'un ancien run : ne pas remplacer une version plus récente.
+          CUR=$(curl -fsSL "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/version.json" | python3 -c "import json,sys; print(json.load(sys.stdin)['versionCode'])" 2>/dev/null || echo 0)
+          if [ "$CUR" -gt "$GITHUB_RUN_NUMBER" ]; then
+            echo "::error::dev-latest contient déjà le build $CUR (> $GITHUB_RUN_NUMBER) : rien n'est publié"; exit 1
+          fi
           cp out/*.apk out/speech.apk
           git tag -f "$TAG"
           git push -f origin "refs/tags/$TAG"

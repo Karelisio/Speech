@@ -81,6 +81,11 @@ int main(int argc, char **argv) {
         for (std::string line; std::getline(in, line);) if (!line.empty()) inputs.push_back(line);
     }
     const std::string system = read_file(argv[4]);
+    if (inputs.empty() || system.empty()) {
+        std::fprintf(stderr, "entrées ou prompt système vides\n");
+        return 1;
+    }
+    int failures = 0;
 
     // 1. Décodage : glouton (deux fois, pour le bruit numérique) contre brouillon de 4 et 8 tokens.
     const int drafts[] = {4, 8};
@@ -92,6 +97,7 @@ int main(int argc, char **argv) {
     for (const auto &line : inputs) {
         Run plain = complete(env, ptr, system, line, 0);
         Run again = complete(env, ptr, system, line, 0);
+        if (plain.text == "<échec>") failures++;
         const bool deterministic = plain.text == again.text;
         if (deterministic) stable++;
         Run spec[2];
@@ -130,5 +136,7 @@ int main(int argc, char **argv) {
     JNI_FN(nFree)(env, nullptr, ptr);
     // Un écart isolé vient du bruit numérique (lots de tailles différentes) sur une quasi-égalité ;
     // une majorité d'écarts signale un cache KV mal tenu.
-    return 2 * same[1] >= (int) inputs.size() ? 0 : 1;
+    if (failures > 0) return 1;
+    const int need = (int) inputs.size();
+    return 2 * same[0] >= need && 2 * same[1] >= need ? 0 : 1;
 }

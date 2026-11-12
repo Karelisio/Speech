@@ -9,3 +9,6 @@ app/libs/*.aar
 *.jks
 !app/dev.keystore
 captures/
+app/libs/*.part
+out/
+models.resolved.json
