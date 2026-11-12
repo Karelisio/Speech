@@ -14,6 +14,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import com.karelisio.speech.SpeechApp
 import com.karelisio.speech.R
+import com.karelisio.speech.util.AppLog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -40,7 +41,15 @@ class DownloadService : Service() {
         super.onCreate()
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel(CHANNEL, "Téléchargements", NotificationManager.IMPORTANCE_LOW))
-        ServiceCompat.startForeground(this, NOTIF_ID, notification("Préparation…", 0, 0), ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+        // Refusé quand le quota dataSync d'Android 15+ (6 h / 24 h) est épuisé : pas de plantage,
+        // le téléchargement continue tant que l'app reste ouverte.
+        runCatching {
+            ServiceCompat.startForeground(this, NOTIF_ID, notification("Préparation…", 0, 0), ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+        }.onFailure {
+            AppLog.w("Download", "service de premier plan refusé", it)
+            stopSelf()
+            return
+        }
 
         wakeLock = getSystemService(PowerManager::class.java)
             .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "speech:download").apply { acquire(3 * 60 * 60 * 1000L) }
@@ -72,6 +81,13 @@ class DownloadService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_NOT_STICKY
+
+    /** Android 15+ : quota de 6 h atteint, le service doit s'arrêter sous peine de plantage. */
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        AppLog.w("Download", "quota de téléchargement en arrière-plan épuisé, service arrêté")
+        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+        stopSelf()
+    }
 
     private fun notification(text: String, progress: Int, max: Int): Notification =
         NotificationCompat.Builder(this, CHANNEL)

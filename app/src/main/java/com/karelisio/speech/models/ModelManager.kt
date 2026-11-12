@@ -83,8 +83,22 @@ class ModelManager(private val context: Context, private val scope: CoroutineSco
     fun sizeOnDisk(model: ModelInfo): Long =
         dir(model).listFiles()?.sumOf { it.length() } ?: 0L
 
-    private fun initialStatus(m: ModelInfo): ModelStatus =
-        if (File(dir(m), READY_MARKER).exists()) ModelStatus.Ready else ModelStatus.Absent
+    private fun markerText(m: ModelInfo) = m.files.joinToString("\n") { "${it.path} ${it.sha256 ?: "?"}" }
+
+    /**
+     * Prêt seulement si le marqueur correspond au catalogue actuel (même fichiers, même SHA-256)
+     * et que les fichiers sont là : une mise à jour du catalogue ne laisse pas d'anciens poids.
+     * Un « ? » (ancien catalogue sans SHA) est accepté pour ne pas forcer de re-téléchargement.
+     */
+    private fun initialStatus(m: ModelInfo): ModelStatus {
+        val lines = runCatching { File(dir(m), READY_MARKER).readLines() }.getOrNull() ?: return ModelStatus.Absent
+        val ok = lines.size == m.files.size && m.files.zip(lines).all { (f, line) ->
+            val (path, sha) = line.split(' ', limit = 2).let { it[0] to it.getOrElse(1) { "?" } }
+            path == f.path && (sha == "?" || f.sha256 == null || sha == f.sha256) && File(dir(m), f.path).exists()
+        }
+        if (!ok) AppLog.w(TAG, "${m.id} : marqueur périmé ou fichiers manquants, à retélécharger")
+        return if (ok) ModelStatus.Ready else ModelStatus.Absent
+    }
 
     private fun set(id: String, s: ModelStatus) = _status.update { it + (id to s) }
 
@@ -108,23 +122,34 @@ class ModelManager(private val context: Context, private val scope: CoroutineSco
     }
 
     private suspend fun runDownload(model: ModelInfo) {
+        val me = currentCoroutineContext()[Job]
+        // Un job annulé puis remplacé (Annuler → Télécharger) ne doit pas écraser le statut du nouveau.
+        fun setIfCurrent(s: ModelStatus) = synchronized(this) { if (jobs[model.id] === me) set(model.id, s) }
         try {
             downloadModel(model)
-            set(model.id, ModelStatus.Ready)
+            setIfCurrent(ModelStatus.Ready)
             AppLog.i(TAG, "${model.id} prêt (${sizeOnDisk(model) / 1_000_000} Mo)")
         } catch (e: CancellationException) {
-            set(model.id, ModelStatus.Absent)
-            throw e
+            throw e // cancel() a déjà remis le statut à Absent
         } catch (e: Exception) {
             AppLog.e(TAG, "échec du téléchargement de ${model.id}", e)
-            set(model.id, ModelStatus.Failed(e.message ?: e.javaClass.simpleName))
+            setIfCurrent(ModelStatus.Failed(e.message ?: e.javaClass.simpleName))
+        } finally {
+            synchronized(this) { if (jobs[model.id] === me) jobs.remove(model.id) }
         }
     }
 
+    /** Annule et efface la partie déjà téléchargée (sinon la place n'est jamais rendue). */
     @Synchronized
     fun cancel(id: String) {
-        jobs.remove(id)?.cancel()
+        val job = jobs.remove(id)
+        job?.cancel()
         set(id, ModelStatus.Absent)
+        val model = find(id) ?: return
+        if (job != null) scope.launch(Dispatchers.IO) {
+            job.join()
+            dir(model).listFiles { f -> f.name.endsWith(".part") }?.forEach { it.delete() }
+        }
     }
 
     fun delete(id: String) {
@@ -159,7 +184,8 @@ class ModelManager(private val context: Context, private val scope: CoroutineSco
             set(model.id, ModelStatus.Verifying)
             val expected = f.sha256
             if (expected != null) {
-                val actual = sha256(part)
+                val ctx = currentCoroutineContext()
+                val actual = sha256(part) { ctx.ensureActive() }
                 if (actual != expected) {
                     part.delete()
                     throw IOException("Checksum invalide pour ${f.path}")
@@ -168,17 +194,21 @@ class ModelManager(private val context: Context, private val scope: CoroutineSco
                 AppLog.w(TAG, "${f.path} : pas de SHA-256 dans le catalogue, vérification de la taille seulement")
             }
             if (f.size > 0 && part.length() != f.size) throw IOException("Taille inattendue pour ${f.path}")
+            currentCoroutineContext().ensureActive() // annulé pendant la vérification : rien n'est validé
             check(part.renameTo(dest)) { "Renommage impossible : ${dest.name}" }
         }
-        File(dir, READY_MARKER).writeText(model.files.joinToString("\n") { "${it.path} ${it.sha256 ?: "?"}" })
+        currentCoroutineContext().ensureActive()
+        File(dir, READY_MARKER).writeText(markerText(model))
     }
 
     private suspend fun fetchWithRetry(url: String, part: File, expectedSize: Long, progress: (Long, Long) -> Unit) {
         var attempt = 1
         while (true) {
+            val before = part.length()
             try {
                 return fetch(url, part, expectedSize, progress)
             } catch (e: IOException) {
+                if (part.length() > before) attempt = 1 // l'essai a avancé : nouveau crédit d'essais
                 if (attempt >= ATTEMPTS) throw e
                 val wait = 2_000L shl (attempt - 1)
                 AppLog.w(TAG, "${part.name} : ${e.message} — reprise dans ${wait / 1000} s (essai ${attempt + 1}/$ATTEMPTS)")

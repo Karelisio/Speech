@@ -38,7 +38,15 @@ object AppLog {
         val line = "${fmt.format(Date())} $lvl/$tag: $msg" + (t?.let { " — ${it.javaClass.simpleName}: ${it.message}" } ?: "")
         lines.addLast(line)
         while (lines.size > MAX_LINES) lines.removeFirst()
-        file?.let { f -> writer.execute { runCatching { f.appendText(line + "\n") } } }
+        file?.let { f ->
+            writer.execute {
+                runCatching {
+                    // Le process vit des jours (service d'accessibilité) : rotation au fil de l'eau.
+                    if (f.length() > MAX_FILE_BYTES) f.renameTo(File(f.parentFile, "speech.old.log"))
+                    f.appendText(line + "\n")
+                }
+            }
+        }
     }
 
     @Synchronized

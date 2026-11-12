@@ -134,7 +134,10 @@ class UpdateManager(private val context: Context, private val scope: CoroutineSc
 
     fun install() {
         val f = apkFile
-        if (!f.exists()) return
+        if (!f.exists()) {
+            _state.value = UpdateState.Failed("APK introuvable (cache vidé) : relance la vérification")
+            return
+        }
         _state.value = UpdateState.Installing
         scope.launch(Dispatchers.IO) {
             try {
@@ -144,7 +147,7 @@ class UpdateManager(private val context: Context, private val scope: CoroutineSc
                     if (Build.VERSION.SDK_INT >= 31) setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
                 }
                 val id = installer.createSession(params)
-                installer.openSession(id).use { session ->
+                try { installer.openSession(id).use { session ->
                     session.openWrite("speech.apk", 0, f.length()).use { out ->
                         f.inputStream().use { it.copyTo(out) }
                         session.fsync(out)
@@ -154,6 +157,9 @@ class UpdateManager(private val context: Context, private val scope: CoroutineSc
                         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE,
                     )
                     withContext(Dispatchers.Main) { session.commit(pending.intentSender) }
+                } } catch (e: Exception) {
+                    runCatching { installer.abandonSession(id) } // sinon les données restent en attente
+                    throw e
                 }
                 AppLog.i(TAG, "session d'installation $id envoyée")
             } catch (e: Exception) {
