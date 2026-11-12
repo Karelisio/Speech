@@ -20,12 +20,15 @@ class LlamaCleaner(
     companion object {
         // Prompt système (~700 tokens) + dictée de plusieurs minutes + sa copie nettoyée.
         private const val N_CTX = 4096
+        /** Repli si le contexte long ne peut pas être alloué (mémoire GPU). */
+        private const val N_CTX_FALLBACK = 2048
         private const val MAX_RATIO = 1.5f
         private const val EXTRA_TOKENS = 16
         const val DEFAULT_DRAFT = 8
     }
 
-    private var ptr: Long = api.load(modelFile.absolutePath, N_CTX, threads, threads)
+    private var ptr: Long = api.load(modelFile.absolutePath, N_CTX, threads, threads).takeIf { it != 0L }
+        ?: api.load(modelFile.absolutePath, N_CTX_FALLBACK, threads, threads)
 
     init {
         check(ptr != 0L) { "Impossible de charger ${modelFile.name}" }

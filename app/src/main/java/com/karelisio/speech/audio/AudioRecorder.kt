@@ -75,6 +75,8 @@ class AudioRecorder(private val configProvider: () -> CaptureConfig = { CaptureC
         private const val CHUNK_MS = 32 // cadence de mise à jour du niveau sonore
         /** 10 min : au-delà, l'enregistrement s'arrête (dictée oubliée → mémoire saturée). */
         const val MAX_SAMPLES = SAMPLE_RATE * 600
+        /** ~1 s d'erreurs de lecture consécutives avant d'abandonner. */
+        private const val MAX_READ_ERRORS = 100
     }
 
     private var record: AudioRecord? = null
@@ -151,14 +153,22 @@ class AudioRecorder(private val configProvider: () -> CaptureConfig = { CaptureC
             val decimator = if (cfg.captureRate == 3 * SAMPLE_RATE) Decimator3() else null
             val down = FloatArray(chunk.size / 3 + 2)
             var first = true
+            var errors = 0
             while (running) {
                 val n = r.read(chunk, 0, chunk.size, AudioRecord.READ_BLOCKING)
                 if (n < 0) {
-                    // Micro perdu (audioserver redémarré, périphérique retiré) : pas de boucle à vide.
-                    AppLog.e(TAG, "lecture micro en échec ($n)")
-                    _autoStop.value = "micro indisponible"
-                    break
+                    // Erreur passagère tolérée ; persistante (audioserver redémarré, micro retiré) :
+                    // arrêt, sans boucle à vide.
+                    if (++errors == 1) AppLog.w(TAG, "lecture micro en échec ($n)")
+                    if (errors >= MAX_READ_ERRORS) {
+                        AppLog.e(TAG, "micro indisponible après $errors erreurs ($n)")
+                        _autoStop.value = "micro indisponible"
+                        break
+                    }
+                    SystemClock.sleep(10)
+                    continue
                 }
+                errors = 0
                 if (n == 0) continue
                 if (first) {
                     lastStartLatencyMs = SystemClock.elapsedRealtime() - tStart

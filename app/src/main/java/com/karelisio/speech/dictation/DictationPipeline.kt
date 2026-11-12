@@ -96,7 +96,10 @@ class DictationPipeline(private val app: SpeechApp, private val scope: Coroutine
 
         val llm = app.cleanerModelId()
         val clean = if (raw.isNotBlank() && app.cleaning.value && llm != null) {
-            app.cleaners.clean(llm, app.prefs.llmThreads, raw, app.dictionary.terms)
+            // Le nettoyage est optionnel : s'il échoue (modèle impossible à charger…), le texte brut part quand même.
+            runCatching { app.cleaners.clean(llm, app.prefs.llmThreads, raw, app.dictionary.terms) }
+                .onFailure { if (it is kotlinx.coroutines.CancellationException) throw it; AppLog.e(TAG, "nettoyage IA en échec, texte brut inséré", it) }
+                .getOrNull()
         } else null
         val final = clean?.text?.let { app.dictionary.apply(it) } ?: raw
         val tEnd = SystemClock.elapsedRealtime()
