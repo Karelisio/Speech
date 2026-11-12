@@ -105,6 +105,10 @@ fun HomeScreen(
     val withMic = rememberWithMicPermission()
     var showSave by remember { mutableStateOf(false) }
 
+    // Autorisations / accessibilité relues au retour des réglages système.
+    val resume = rememberResumeTick()
+    val missingPermissions = remember(resume) { AppPermissions.steps().count { !AppPermissions.isGranted(context, it, app.prefs) } }
+    val accessibilityOn = remember(resume) { SpeechAccessibilityService.isEnabled(context) }
     val cfg = remember(modelStatus) { vm.currentConfig() }
     // Premier modèle de reconnaissance du catalogue = recommandé (Parakeet).
     val recommended = remember { app.models.catalog.firstOrNull { it.isStt } }
@@ -113,7 +117,7 @@ fun HomeScreen(
         bubbleEnabled = enabled,
         paused = paused,
         serviceRunning = DictationService.isRunning,
-        missingPermissions = AppPermissions.steps().count { !AppPermissions.isGranted(context, it, app.prefs) },
+        missingPermissions = missingPermissions,
         modelName = cfg?.let { app.models.find(it.modelId)?.shortName },
         threads = cfg?.threads ?: 0,
         captureLabel = if (app.prefs.captureRate == 48_000) "48 kHz" else "16 kHz",
@@ -145,7 +149,7 @@ fun HomeScreen(
         onOpenPermissions = onOpenPermissions,
         onOpenModels = onOpenModels,
         onDownloadRecommended = { recommended?.let { app.models.download(it.id) } },
-        accessibilityOn = SpeechAccessibilityService.isEnabled(context),
+        accessibilityOn = accessibilityOn,
         recent = app.history.entries.collectAsState().value.take(3),
         onCopyEntry = { copyText(context, "dictée", it.text) },
         onOpenHistory = onOpenHistory,

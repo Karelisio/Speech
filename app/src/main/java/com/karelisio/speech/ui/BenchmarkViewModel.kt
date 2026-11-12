@@ -104,13 +104,13 @@ class BenchmarkViewModel(application: Application) : AndroidViewModel(applicatio
         val modes = VadMode.entries.filter { it in _ui.value.modes }
         val plan = BenchPlan(configs, clipList, modes, _ui.value.repetitions, app.prefs.language)
         lastPlan = plan
-        _ui.update { it.copy(running = true, results = emptyList(), message = null, progress = 0f) }
+        _ui.update { it.copy(running = true, results = emptyList(), endurance = null, message = null, progress = 0f) }
         job = viewModelScope.launch {
             AppLog.i("Bench", "début : ${configs.size} configs × ${clipList.size} clips")
-            app.engines.release() // mesures RAM propres : aucun autre modèle chargé
             try {
                 val llm = app.cleanerModelId()?.takeIf { _ui.value.clean }
                 val threads = app.prefs.llmThreads
+                prepareMemory(llm, threads)
                 runner.run(
                     plan,
                     app.vad(),
@@ -118,6 +118,10 @@ class BenchmarkViewModel(application: Application) : AndroidViewModel(applicatio
                     onProgress = { msg, p -> _ui.update { it.copy(progressText = msg, progress = p) } },
                     onResult = { r -> _ui.update { it.copy(results = it.results + r) } },
                 )
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                AppLog.e("Bench", "benchmark interrompu", e)
+                _ui.update { it.copy(message = "Benchmark : ${e.message}") }
             } finally {
                 _ui.update { it.copy(running = false) }
             }
@@ -135,10 +139,10 @@ class BenchmarkViewModel(application: Application) : AndroidViewModel(applicatio
         }
         _ui.update { it.copy(running = true, endurance = null, message = null, progress = 0f) }
         job = viewModelScope.launch {
-            app.engines.release()
             val llm = app.cleanerModelId()?.takeIf { _ui.value.clean }
             val threads = app.prefs.llmThreads
             try {
+                prepareMemory(llm, threads)
                 val r = runner.endurance(
                     cfg, clipList, 100, app.vad(), app.prefs.vadMode, app.prefs.language,
                     llm?.let { id -> { text: String -> app.cleaners.clean(id, threads, text) } },
@@ -153,15 +157,30 @@ class BenchmarkViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    /**
+     * Mesures RAM comparables : aucun moteur chargé, et le modèle de nettoyage soit déchargé,
+     * soit chargé une fois avant la première config (sinon seule la 1ʳᵉ paierait son chargement).
+     */
+    private suspend fun prepareMemory(llm: String?, threads: Int) {
+        app.engines.release()
+        app.cleaners.release()
+        if (llm != null) app.cleaners.clean(llm, threads, "Bonjour.")
+    }
+
+    /** L'arrêt réel arrive à la fin du calcul natif en cours ; `running` repasse à false dans le finally. */
     fun cancel() {
         job?.cancel()
-        _ui.update { it.copy(running = false, progressText = "Annulé") }
+        _ui.update { it.copy(progressText = "Annulation…") }
     }
 
     fun report(): String = BenchReport.build(app, lastPlan, _ui.value.results, clips.value, _ui.value.endurance)
 
     @SuppressLint("MissingPermission")
     fun startRecording() {
+        if (recorder.isRecording) {
+            _ui.update { it.copy(message = "Micro déjà utilisé (dictée en cours)") }
+            return
+        }
         runCatching { recorder.start() }
             .onSuccess { _ui.update { it.copy(recording = true) } }
             .onFailure { e -> _ui.update { it.copy(message = "Micro : ${e.message}") } }

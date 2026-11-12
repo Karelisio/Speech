@@ -31,6 +31,7 @@ class BenchClips(private val context: Context) {
 
     @Synchronized
     fun add(samples: FloatArray, reference: String?, source: String? = null): BenchClip {
+        require(samples.size >= AudioRecorder.SAMPLE_RATE / 2) { "clip trop court (< 0,5 s)" }
         val clip = BenchClip(
             id = "clip_${System.currentTimeMillis()}",
             reference = reference?.trim()?.takeIf { it.isNotEmpty() },

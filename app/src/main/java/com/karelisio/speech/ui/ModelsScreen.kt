@@ -55,8 +55,9 @@ import com.karelisio.speech.ui.components.TagChip
 fun ModelsScreen(modifier: Modifier = Modifier) {
     val app = LocalContext.current.applicationContext as SpeechApp
     val status by app.models.status.collectAsState()
-    var active by remember { mutableStateOf(app.prefs.activeModelId ?: app.models.readyModels().firstOrNull()?.id) }
-    var activeLlm by remember { mutableStateOf(app.cleanerModelId()) }
+    // Recalculés quand un modèle est supprimé / téléchargé (repli sur un autre modèle prêt).
+    var active by remember(status) { mutableStateOf(app.prefs.activeModelId?.takeIf { app.models.isReady(it) } ?: app.models.readyModels().firstOrNull()?.id) }
+    var activeLlm by remember(status) { mutableStateOf(app.cleanerModelId()) }
     ModelsContent(
         modifier = modifier,
         models = app.models.catalog,

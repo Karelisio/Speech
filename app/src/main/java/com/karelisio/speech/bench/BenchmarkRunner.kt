@@ -176,7 +176,11 @@ class BenchmarkRunner(
                         val r = last!!
                         val c = if (cleaner != null && r.text.isNotBlank()) {
                             tick("${cfg.label()} · ${mode.short} — nettoyage IA ${ci + 1}/${plan.clips.size}")
-                            cleaner(r.text)
+                            // Un échec du nettoyage ne doit pas effacer les mesures de reconnaissance.
+                            runCatching { cleaner(r.text) }.getOrElse { e ->
+                                if (e is kotlinx.coroutines.CancellationException) throw e
+                                CleanResult(r.text, r.text, false, 0, reason = "échec : ${e.message}")
+                            }
                         } else null
                         ClipResult(
                             clipId = clip.id, durationMs = clip.durationMs, runsMs = runs, text = r.text,

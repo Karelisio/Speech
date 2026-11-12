@@ -25,3 +25,18 @@ fun <T> Dropdown(label: String, options: List<Pair<T, String>>, onSelect: (T) ->
 }
 
 fun formatMb(bytes: Long): String = if (bytes >= 1_000_000_000) "%.1f Go".format(bytes / 1e9) else "${bytes / 1_000_000} Mo"
+
+/** Compteur incrémenté à chaque retour dans l'app (ex. depuis un écran de réglages système). */
+@Composable
+fun rememberResumeTick(): Int {
+    var tick by remember { mutableStateOf(0) }
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    androidx.compose.runtime.DisposableEffect(lifecycle) {
+        val obs = androidx.lifecycle.LifecycleEventObserver { _, e ->
+            if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) tick++
+        }
+        lifecycle.addObserver(obs)
+        onDispose { lifecycle.removeObserver(obs) }
+    }
+    return tick
+}

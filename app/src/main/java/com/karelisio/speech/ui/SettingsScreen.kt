@@ -254,7 +254,8 @@ fun SettingsScreen(modifier: Modifier = Modifier, onOpenPermissions: () -> Unit,
         GroupCard {
             UpdateRow(app)
             GroupDivider()
-            val missing = AppPermissions.steps().count { !AppPermissions.isGranted(context, it, prefs) }
+            val resume = rememberResumeTick()
+            val missing = remember(resume) { AppPermissions.steps().count { !AppPermissions.isGranted(context, it, prefs) } }
             SettingRow(
                 Icons.Rounded.Security, "Autorisations",
                 if (missing == 0) "Tout est accordé" else "$missing à accorder",
@@ -309,6 +310,10 @@ private fun AudioGroup(app: SpeechApp) {
     var rate by remember { mutableStateOf(prefs.captureRate) }
     var recording by remember { mutableStateOf(false) }
     var last by remember { mutableStateOf<FloatArray?>(null) }
+    // Quitter l'écran pendant le test ne laisse pas le micro ouvert (la bulle le croirait occupé).
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        onDispose { if (recording && recorder.isRecording) recorder.stop() }
+    }
     val unprocessedOk = remember {
         context.getSystemService(AudioManager::class.java)
             .getProperty(AudioManager.PROPERTY_SUPPORT_AUDIO_SOURCE_UNPROCESSED) == "true"
@@ -333,7 +338,7 @@ private fun AudioGroup(app: SpeechApp) {
             FilledIconButton(
                 onClick = {
                     if (recording) { last = recorder.stop(); recording = false }
-                    else withMic { runCatching { recorder.start() }.onSuccess { recording = true } }
+                    else if (!recorder.isRecording) withMic { runCatching { recorder.start() }.onSuccess { recording = true } }
                 },
                 colors = if (recording) IconButtonDefaults.filledIconButtonColors(containerColor = MaterialTheme.colorScheme.error) else IconButtonDefaults.filledIconButtonColors(),
             ) { Icon(if (recording) Icons.Rounded.Stop else Icons.Rounded.Mic, null) }
